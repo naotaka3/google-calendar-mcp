@@ -18,24 +18,25 @@ class TokenManager {
   private tokenExpirations: Map<string, number> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private tokensFilePath: string;
+  private encryptionKeyFilePath: string;
+  private configDir: string;
 
   constructor() {
-    // 環境変数から暗号化キーを取得するか、ランダムに生成する
-    const keyString = process.env.TOKEN_ENCRYPTION_KEY ||
-      crypto.randomBytes(32).toString('hex');
-    this.encryptionKey = Buffer.from(keyString, 'hex');
-
-    // トークンファイルのパスを設定
-    const configDir = path.join(os.homedir(), '.google-calendar-mcp');
-    this.tokensFilePath = path.join(configDir, 'tokens.json');
+    // 設定ディレクトリのパスを設定
+    this.configDir = path.join(os.homedir(), '.google-calendar-mcp');
+    this.tokensFilePath = path.join(this.configDir, 'tokens.json');
+    this.encryptionKeyFilePath = path.join(this.configDir, 'encryption-key.txt');
 
     // 設定ディレクトリが存在しない場合は作成
-    if (!fs.existsSync(configDir)) {
-      fs.mkdirSync(configDir, { recursive: true });
+    if (!fs.existsSync(this.configDir)) {
+      fs.mkdirSync(this.configDir, { recursive: true });
       if (typeof logger.info === 'function') {
-        logger.info(`Created config directory: ${configDir}`);
+        logger.info(`Created config directory: ${this.configDir}`);
       }
     }
+
+    // 暗号化キーを読み込みまたは生成
+    this.encryptionKey = this.loadOrGenerateEncryptionKey();
 
     if (typeof logger.info === 'function') {
       logger.info('TokenManager initialized with secure encryption');
@@ -46,6 +47,59 @@ class TokenManager {
 
     // 定期的に期限切れトークンをクリーンアップ
     this.cleanupInterval = setInterval(this.cleanupExpiredTokens.bind(this), 60 * 60 * 1000); // 1時間ごと
+  }
+
+  /**
+   * 暗号化キーを読み込むか、存在しない場合は生成して保存
+   *
+   * @returns 暗号化キー
+   */
+  private loadOrGenerateEncryptionKey(): Buffer {
+    // 環境変数から暗号化キーを取得（優先度最高）
+    if (process.env.TOKEN_ENCRYPTION_KEY) {
+      if (typeof logger.info === 'function') {
+        logger.info('Using encryption key from environment variable');
+      }
+      return Buffer.from(process.env.TOKEN_ENCRYPTION_KEY, 'hex');
+    }
+
+    // ファイルから暗号化キーを読み込む
+    if (fs.existsSync(this.encryptionKeyFilePath)) {
+      try {
+        const keyString = fs.readFileSync(this.encryptionKeyFilePath, 'utf8').trim();
+        if (keyString && keyString.length === 64) {
+          if (typeof logger.info === 'function') {
+            logger.info('Loaded encryption key from file');
+          }
+          return Buffer.from(keyString, 'hex');
+        } else {
+          if (typeof logger.warn === 'function') {
+            logger.warn('Invalid encryption key in file, generating new one');
+          }
+        }
+      } catch (err: unknown) {
+        const error = err as Error;
+        if (typeof logger.warn === 'function') {
+          logger.warn('Failed to read encryption key from file, generating new one', { error: error.message });
+        }
+      }
+    }
+
+    // 新しい暗号化キーを生成して保存
+    const newKey = crypto.randomBytes(32).toString('hex');
+    try {
+      fs.writeFileSync(this.encryptionKeyFilePath, newKey, { mode: 0o600 });
+      if (typeof logger.info === 'function') {
+        logger.info(`Generated new encryption key and saved to ${this.encryptionKeyFilePath}`);
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (typeof logger.error === 'function') {
+        logger.error('Failed to save encryption key to file', { error: error.message });
+      }
+    }
+
+    return Buffer.from(newKey, 'hex');
   }
 
   /**

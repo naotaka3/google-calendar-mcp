@@ -160,8 +160,7 @@ npx @takumi0706/google-calendar-mcp@1.0.5
 GOOGLE_CLIENT_ID=your_client_id
 GOOGLE_CLIENT_SECRET=your_client_secret
 GOOGLE_REDIRECT_URI=http://localhost:4153/oauth2callback
-# Optional: Token encryption key (auto-generated if not provided)
-TOKEN_ENCRYPTION_KEY=32-byte-hex-key
+
 # Optional: Auth server port and host (default port: 4153, host: localhost)
 AUTH_PORT=4153
 AUTH_HOST=localhost
@@ -170,11 +169,13 @@ PORT=3000
 HOST=localhost
 # Optional: Enable manual authentication (useful when localhost is not accessible)
 USE_MANUAL_AUTH=true
+# Optional: Token encryption key (auto-generated if not set)
+# TOKEN_ENCRYPTION_KEY=your_64_character_hex_string
 ```
 
 ### Claude Desktop Configuration
 
-Add the server to your `claude_desktop_config.json`. If you're running in an environment where localhost is not accessible, add the `USE_MANUAL_AUTH` environment variable set to "true".
+Add the server to your `claude_desktop_config.json`:
 
 ```json
 {
@@ -188,24 +189,32 @@ Add the server to your `claude_desktop_config.json`. If you're running in an env
       "env": {
         "GOOGLE_CLIENT_ID": "your_client_id",
         "GOOGLE_CLIENT_SECRET": "your_client_secret",
-        "GOOGLE_REDIRECT_URI": "http://localhost:4153/oauth2callback",
-        "USE_MANUAL_AUTH": "true"
+        "GOOGLE_REDIRECT_URI": "http://localhost:4153/oauth2callback"
       }
     }
   }
 }
 ```
 
+**Authentication persistence**: The server automatically generates an encryption key on first run and saves it to `~/.google-calendar-mcp/encryption-key.txt`. This allows your authentication to persist across Claude Desktop restarts without any additional configuration.
+
+**Optional settings**:
+- If you're running in an environment where localhost is not accessible (e.g., remote server or container), add `"USE_MANUAL_AUTH": "true"` to enable manual code entry
+- You can customize the authentication server port with `"AUTH_PORT": "4153"` (default is 4153)
+- For shared environments, you can optionally set `"TOKEN_ENCRYPTION_KEY"` to control the encryption key used
+
 ## Security Considerations
 
-- **OAuth tokens** are stored in memory only (not stored in a file-based storage)
+- **OAuth tokens** are encrypted with AES-256-GCM and persisted to `~/.google-calendar-mcp/tokens.json`
+- **Encryption key** is auto-generated and saved to `~/.google-calendar-mcp/encryption-key.txt` with 0600 permissions
+- **File permissions** should be restricted (recommend `chmod 600 ~/.google-calendar-mcp/*`)
 - **Sensitive credentials** must be provided as environment variables
-- **Token encryption** using AES-256-GCM for secure storage
 - **PKCE implementation** with explicit code_verifier and code_challenge generation
 - **State parameter validation** for CSRF protection
 - **Security headers** applied using Helmet.js
 - **Rate limiting** for API endpoint protection
 - **Input validation** with Zod schema
+- If using `TOKEN_ENCRYPTION_KEY` env var, keep it secret and never commit to version control
 
 For more details, see [SECURITY.md](SECURITY.md).
 
@@ -226,6 +235,7 @@ If you encounter any issues:
 
 ### Common Errors
 
+- **Re-authentication required on every restart**: This usually means the encryption key file (`~/.google-calendar-mcp/encryption-key.txt`) was deleted. The key is automatically generated on first run, but if deleted, tokens will become unreadable and re-authentication will be required.
 - **JSON Parsing Errors**: If you see errors like `Unexpected non-whitespace character after JSON at position 4 (line 1 column 5)`, it's typically due to malformed JSON-RPC messages. This issue has been fixed in version 0.6.7 and later. If you're still experiencing these errors, please update to the latest version.
 - **Authentication Errors**: Verify your Google OAuth credentials
 - **Invalid state parameter**: If you see `Authentication failed: Invalid state parameter` when re-authenticating, update to version 1.0.3 or later which fixes the OAuth server lifecycle management. In older versions, you may need to close port 4153 and restart the application.

@@ -95,7 +95,7 @@ src/
 ├── auth/               # OAuth2 authentication
 │   ├── oauth-auth.ts   # Main auth class, manages OAuth flow
 │   ├── oauth-handler.ts # PKCE flow, state validation, token exchange
-│   └── token-manager.ts # In-memory encrypted token storage
+│   └── token-manager.ts # Encrypted token storage (memory + file persistence)
 ├── calendar/           # Google Calendar API wrapper
 │   ├── calendar-api.ts # API methods (getEvents, createEvent, etc.)
 │   └── types.ts        # TypeScript types for calendar operations
@@ -138,10 +138,16 @@ src/
 - Reuses client instance across all API calls
 - Calls `oauthAuth.getAuthenticatedClient()` which handles token refresh
 
-**Token Encryption**:
-- AES-256-GCM encryption for stored tokens
-- Encryption key from TOKEN_ENCRYPTION_KEY env var or auto-generated
+**Token Persistence and Encryption**:
+- Tokens are persisted to `~/.google-calendar-mcp/tokens.json` for reuse across restarts
+- AES-256-GCM encryption for all stored tokens (both in-memory and on disk)
+- Encryption key is automatically generated on first run and saved to `~/.google-calendar-mcp/encryption-key.txt`
+- Encryption key is loaded from file on subsequent runs, ensuring tokens remain accessible across restarts
+- `TOKEN_ENCRYPTION_KEY` env var can optionally override the file-based key (useful for shared environments)
+- Both access tokens and refresh tokens are encrypted and stored
+- Tokens loaded automatically on startup from the tokens file
 - Tokens stored with expiry time, automatically cleared when expired
+- Cleanup task runs every hour to remove expired tokens
 
 ## Environment Variables
 
@@ -151,7 +157,9 @@ Required:
 - `GOOGLE_REDIRECT_URI`: Usually `http://localhost:4153/oauth2callback`
 
 Optional:
-- `TOKEN_ENCRYPTION_KEY`: 32-byte hex key for token encryption (auto-generated if not set)
+- `TOKEN_ENCRYPTION_KEY`: 32-byte hex key (64 hex characters) for token encryption
+  - If not set, automatically generated and saved to `~/.google-calendar-mcp/encryption-key.txt`
+  - Useful for shared environments where you want to control the encryption key
 - `AUTH_PORT`: OAuth server port (default: 4153)
 - `AUTH_HOST`: OAuth server host (default: localhost)
 - `PORT`: MCP server port (default: 3000, unused with STDIO)
@@ -168,24 +176,29 @@ Optional:
 
 ## Security Notes
 
-- OAuth tokens stored in-memory only (never persisted to disk)
+- OAuth tokens encrypted with AES-256-GCM and persisted to `~/.google-calendar-mcp/tokens.json`
+- Encryption key auto-generated and saved to `~/.google-calendar-mcp/encryption-key.txt` with 0600 permissions
+- Token and encryption key file permissions should be restricted (recommend `chmod 600 ~/.google-calendar-mcp/*`)
 - PKCE flow with code_verifier and code_challenge for authorization
 - State parameter validation for CSRF protection
 - Helmet.js security headers on OAuth server
 - Rate limiting on OAuth endpoints (via express-rate-limit)
 - Input validation with Zod schemas on all tool parameters
+- If using `TOKEN_ENCRYPTION_KEY` env var, keep it secret and never commit to version control
 
 ## Common Gotchas
 
-1. **Port 4153 conflicts**: OAuth server starts on-demand. If re-authenticating fails with "Invalid state parameter", ensure no other process is using port 4153.
+1. **Token persistence works automatically**: Encryption key is auto-generated and saved to `~/.google-calendar-mcp/encryption-key.txt` on first run. If this file is deleted, tokens will become unreadable and re-authentication will be required.
 
-2. **Refresh token unavailable**: If refresh token is missing, full re-authentication is triggered. This is expected behavior when `prompt: 'consent'` isn't used or on first auth.
+2. **Port 4153 conflicts**: OAuth server starts on-demand. If re-authenticating fails with "Invalid state parameter", ensure no other process is using port 4153.
 
-3. **Module resolution**: Uses NodeNext module resolution with ESM. The 'open' package is ESM-only and must be dynamically imported.
+3. **Refresh token unavailable**: If refresh token is missing, full re-authentication is triggered. This is expected behavior when `prompt: 'consent'` isn't used or on first auth.
 
-4. **STDIO vs HTTP**: MCP server uses STDIO transport, not HTTP. PORT and HOST env vars are largely unused except for OAuth callback server.
+4. **Module resolution**: Uses NodeNext module resolution with ESM. The 'open' package is ESM-only and must be dynamically imported.
 
-5. **Version script behavior**: `npm version` automatically runs `npm install --legacy-peer-deps` after version bump. This is intentional due to peer dependency conflicts.
+5. **STDIO vs HTTP**: MCP server uses STDIO transport, not HTTP. PORT and HOST env vars are largely unused except for OAuth callback server.
+
+6. **Version script behavior**: `npm version` automatically runs `npm install --legacy-peer-deps` after version bump. This is intentional due to peer dependency conflicts.
 
 ## Recurrence Events
 
