@@ -1,11 +1,14 @@
 // src/auth/token-manager.ts
 import crypto from 'crypto';
 import logger from '../utils/logger';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 /**
  * TokenManager - セキュアなトークン管理クラス
- * 
- * トークンを暗号化してメモリ内に保存し、必要に応じて復号化して取得する
+ *
+ * トークンを暗号化してメモリ内とファイルに保存し、必要に応じて復号化して取得する
  * AES-256-GCM暗号化を使用して高いセキュリティを提供
  */
 class TokenManager {
@@ -14,16 +17,32 @@ class TokenManager {
   private tokens: Map<string, string> = new Map();
   private tokenExpirations: Map<string, number> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
+  private tokensFilePath: string;
 
   constructor() {
     // 環境変数から暗号化キーを取得するか、ランダムに生成する
-    const keyString = process.env.TOKEN_ENCRYPTION_KEY || 
+    const keyString = process.env.TOKEN_ENCRYPTION_KEY ||
       crypto.randomBytes(32).toString('hex');
     this.encryptionKey = Buffer.from(keyString, 'hex');
+
+    // トークンファイルのパスを設定
+    const configDir = path.join(os.homedir(), '.google-calendar-mcp');
+    this.tokensFilePath = path.join(configDir, 'tokens.json');
+
+    // 設定ディレクトリが存在しない場合は作成
+    if (!fs.existsSync(configDir)) {
+      fs.mkdirSync(configDir, { recursive: true });
+      if (typeof logger.info === 'function') {
+        logger.info(`Created config directory: ${configDir}`);
+      }
+    }
 
     if (typeof logger.info === 'function') {
       logger.info('TokenManager initialized with secure encryption');
     }
+
+    // 起動時にファイルからトークンを読み込む
+    this.loadTokensFromFile();
 
     // 定期的に期限切れトークンをクリーンアップ
     this.cleanupInterval = setInterval(this.cleanupExpiredTokens.bind(this), 60 * 60 * 1000); // 1時間ごと
@@ -31,7 +50,7 @@ class TokenManager {
 
   /**
    * トークンを暗号化して保存
-   * 
+   *
    * @param userId ユーザーID
    * @param token 保存するトークン
    * @param expiresIn トークンの有効期限（ミリ秒）、デフォルト30日
@@ -58,6 +77,9 @@ class TokenManager {
       if (typeof logger.debug === 'function') {
         logger.debug(`Token stored for user: ${userId}, expires: ${new Date(expiryTime).toISOString()}`);
       }
+
+      // ファイルに保存
+      this.saveTokensToFile();
     } catch (err: unknown) {
       const error = err as Error;
       if (typeof logger.error === 'function') {
@@ -118,7 +140,7 @@ class TokenManager {
 
   /**
    * トークンを削除
-   * 
+   *
    * @param userId ユーザーID
    */
   public removeToken(userId: string): void {
@@ -127,6 +149,8 @@ class TokenManager {
     if (typeof logger.debug === 'function') {
       logger.debug(`Token removed for user: ${userId}`);
     }
+    // ファイルに保存
+    this.saveTokensToFile();
   }
 
   /**
@@ -146,6 +170,64 @@ class TokenManager {
     if (expiredCount > 0) {
       if (typeof logger.info === 'function') {
         logger.info(`Cleaned up ${expiredCount} expired tokens`);
+      }
+    }
+  }
+
+  /**
+   * トークンをファイルに保存
+   */
+  private saveTokensToFile(): void {
+    try {
+      const data = {
+        tokens: Array.from(this.tokens.entries()),
+        expirations: Array.from(this.tokenExpirations.entries()),
+      };
+      fs.writeFileSync(this.tokensFilePath, JSON.stringify(data, null, 2), 'utf8');
+      if (typeof logger.debug === 'function') {
+        logger.debug(`Tokens saved to file: ${this.tokensFilePath}`);
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (typeof logger.error === 'function') {
+        logger.error('Failed to save tokens to file', { error: error.message });
+      }
+    }
+  }
+
+  /**
+   * ファイルからトークンを読み込む
+   */
+  private loadTokensFromFile(): void {
+    try {
+      if (!fs.existsSync(this.tokensFilePath)) {
+        if (typeof logger.debug === 'function') {
+          logger.debug('No tokens file found, starting with empty tokens');
+        }
+        return;
+      }
+
+      const fileContent = fs.readFileSync(this.tokensFilePath, 'utf8');
+      const data = JSON.parse(fileContent);
+
+      if (data.tokens && Array.isArray(data.tokens)) {
+        this.tokens = new Map(data.tokens);
+      }
+
+      if (data.expirations && Array.isArray(data.expirations)) {
+        this.tokenExpirations = new Map(data.expirations);
+      }
+
+      // 期限切れのトークンをクリーンアップ
+      this.cleanupExpiredTokens();
+
+      if (typeof logger.info === 'function') {
+        logger.info(`Loaded ${this.tokens.size} tokens from file`);
+      }
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (typeof logger.error === 'function') {
+        logger.error('Failed to load tokens from file', { error: error.message });
       }
     }
   }

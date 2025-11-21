@@ -37,6 +37,35 @@ class OAuthAuth {
 
     // Server will be started on-demand when needed
     logger.info('OAuth server will be started when authentication is needed');
+
+    // Load saved tokens from TokenManager if available
+    this.loadSavedTokens();
+  }
+
+  /**
+   * Load saved tokens from TokenManager
+   */
+  private loadSavedTokens(): void {
+    const userId = 'default-user';
+    const refreshToken = tokenManager.getToken(userId);
+    const accessToken = tokenManager.getToken(`${userId}_access`);
+
+    if (accessToken) {
+      const credentials: any = {
+        access_token: accessToken
+      };
+
+      if (refreshToken) {
+        credentials.refresh_token = refreshToken;
+        logger.info('Loaded saved tokens from file');
+      } else {
+        logger.info('Loaded access token from file (no refresh token)');
+      }
+
+      this.oauth2Client.setCredentials(credentials);
+    } else {
+      logger.debug('No saved tokens found, authentication will be required');
+    }
   }
 
   // Get or refresh token
@@ -51,8 +80,8 @@ class OAuthAuth {
       return this.oauth2Client;
     }
 
-    // New authentication
-    return await this.initiateAuthorization();
+    // No authentication available
+    throw new Error('Authentication required. Please use the authenticate tool to authenticate.');
   }
 
   // Check token expiration
@@ -64,14 +93,12 @@ class OAuthAuth {
   // Refresh token
   private async refreshToken(): Promise<void> {
     try {
-      // If there's no refresh token, start a new authentication flow
+      // If there's no refresh token, throw an error
       if (!this.oauth2Client.credentials.refresh_token) {
-        logger.warn('No refresh token available, initiating new authorization flow');
+        logger.warn('No refresh token available');
         // Clear existing credentials
         this.oauth2Client.credentials = {};
-        // Call initiateAuthorization directly to avoid infinite loop
-        await this.initiateAuthorization();
-        return;
+        throw new Error('No refresh token available. Please use the authenticate tool to re-authenticate.');
       }
 
       // If there's a refresh token, perform normal refresh
@@ -87,13 +114,9 @@ class OAuthAuth {
       }
     } catch (error) {
       logger.error(`Failed to refresh token: ${error}`);
-
-      // If an error occurs, start a new authentication flow
-      logger.warn('Token refresh failed, initiating new authorization flow');
       // Clear existing credentials
       this.oauth2Client.credentials = {};
-      // Call initiateAuthorization directly to avoid infinite loop
-      await this.initiateAuthorization();
+      throw error;
     }
   }
 
@@ -307,10 +330,10 @@ class OAuthAuth {
           }
         };
 
-        // Check tokens periodically
-        const intervalId = setInterval(checkToken, 1000);
+        // Check tokens periodically (every 200ms)
+        const intervalId = setInterval(checkToken, 200);
 
-        // Set timeout
+        // Set timeout (5 minutes)
         setTimeout(() => {
           clearInterval(intervalId);
           this.authorizationPromise = null;

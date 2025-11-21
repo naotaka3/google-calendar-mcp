@@ -245,15 +245,30 @@ export class ToolsManager {
           logger.debug('Executing authenticate');
           // Validate parameters (empty object)
           authenticateParamsSchema.parse(args);
+
+          // Check if already authenticated
+          try {
+            await oauthAuth.getAuthenticatedClient();
+            logger.info('Already authenticated');
+            return {
+              content: [{ type: 'text' as const, text: 'Already authenticated. No action needed.' }]
+            };
+          } catch (authError) {
+            // Not authenticated, proceed with authentication flow
+            logger.info('Not authenticated, starting authentication flow');
+          }
+
           // Call the initiateAuthorization method to start the authentication flow
+          // This method will wait for authentication completion (polling every 1 second, 5 minute timeout)
           await oauthAuth.initiateAuthorization();
+
           return {
-            content: [{ type: 'text' as const, text: 'Authentication process started. Please check your browser to complete the authentication.' }]
+            content: [{ type: 'text' as const, text: 'Authentication completed successfully. Tokens have been saved.' }]
           };
         } catch (error) {
           logger.error(`Error in authenticate: ${error}`);
           return {
-            content: [{ type: 'text' as const, text: `Error: ${error}` }],
+            content: [{ type: 'text' as const, text: `Authentication failed: ${error}` }],
             isError: true
           };
         }
