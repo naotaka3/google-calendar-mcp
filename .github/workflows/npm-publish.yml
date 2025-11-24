@@ -1,0 +1,67 @@
+name: NPM Publish
+
+on:
+  release:
+    types: [created]
+
+env:
+  NODE_VERSION: "22.x"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Extract version from GitHub release tag
+        id: get_version
+        run: |
+          TAG=${GITHUB_REF#refs/tags/}
+          # remove the 'v' prefix if it exists
+          VERSION=${TAG#v}
+          echo "Version: $VERSION"
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Validate tag format
+        run: |
+          if [[ ! "${{ env.VERSION }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid tag format. Tag must follow vX.Y.Z format."
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - name: Update package version
+        run: npm version $VERSION --no-git-tag-version
+        env:
+          VERSION: ${{ env.VERSION }}
+
+      - name: Check package.json
+        run: cat package.json
+
+      - name: Build
+        run: npm run build
+
+      - name: Upload JS files to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            build/*.js
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish to NPM
+        run: npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

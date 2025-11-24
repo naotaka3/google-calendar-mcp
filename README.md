@@ -1,14 +1,14 @@
 # Google Calendar MCP Server
-![Apr-15-2025 12-17-08](https://github.com/user-attachments/assets/8970351e-c90d-42e3-8609-b4dfe33f8615)
 
+---
 
-> **🔔 VERSION UPDATE NOTICE 🔔**  
-> Version 1.0.5 adds support for recurring events through the `recurrence` parameter in both `createEvent` and `updateEvent` tools. This allows you to create and modify recurring events directly without having to set them up manually after creation.
+**This repository is a fork and enhancement of [takumi0706/google-calendar-mcp](https://github.com/takumi0706/google-calendar-mcp) v1.0.6. Special thanks to the original author.**
 
-![](https://badge.mcpx.dev?type=server 'MCP Server')
-![Version](https://img.shields.io/badge/version-1.0.6-blue.svg)
-![License](https://img.shields.io/badge/license-MIT-green.svg)
+**Main difference: This version saves the acquired Google authentication token to a local file, so you do not need to authenticate every time you use it.**
 
+**Please pay close attention to security. Manage your tokens and encryption keys strictly and never allow them to leak to third parties.**
+
+---
 
 ## Project Overview
 
@@ -54,6 +54,7 @@ This MCP server provides the following tools for interacting with Google Calenda
 Retrieves calendar events with various filtering options.
 
 **Parameters:**
+
 - `calendarId` (optional): Calendar ID (uses primary calendar if omitted)
 - `timeMin` (optional): Start time for event retrieval (ISO 8601 format, e.g., "2025-03-01T00:00:00Z")
 - `timeMax` (optional): End time for event retrieval (ISO 8601 format)
@@ -65,6 +66,7 @@ Retrieves calendar events with various filtering options.
 Creates a new calendar event.
 
 **Parameters:**
+
 - `calendarId` (optional): Calendar ID (uses primary calendar if omitted)
 - `event`: Event details object containing:
   - `summary` (required): Event title
@@ -84,6 +86,7 @@ Creates a new calendar event.
 Updates an existing calendar event. The function fetches the existing event data first and merges it with the update data, preserving fields that are not included in the update request.
 
 **Parameters:**
+
 - `calendarId` (optional): Calendar ID (uses primary calendar if omitted)
 - `eventId` (required): ID of the event to update
 - `event`: Event details object containing fields to update (same structure as createEvent, all fields optional)
@@ -97,6 +100,7 @@ Updates an existing calendar event. The function fetches the existing event data
 Deletes a calendar event.
 
 **Parameters:**
+
 - `calendarId` (optional): Calendar ID (uses primary calendar if omitted)
 - `eventId` (required): ID of the event to delete
 
@@ -105,6 +109,7 @@ Deletes a calendar event.
 Re-authenticates with Google Calendar. This is useful when you want to switch between different Google accounts without having to restart Claude.
 
 **Parameters:**
+
 - None
 
 ## Development Guidelines
@@ -143,10 +148,10 @@ The version script will automatically run `npm install` when the version is upda
 
 ## Deployment
 
-This package is published on npm as `@takumi0706/google-calendar-mcp`:
+This package is published on npm as `@naotaka3/google-calendar-mcp`:
 
 ```bash
-npx @takumi0706/google-calendar-mcp@1.0.5
+npx @naotaka3/google-calendar-mcp@latest
 ```
 
 ### Prerequisites
@@ -168,7 +173,7 @@ AUTH_HOST=localhost
 PORT=3000
 HOST=localhost
 # Optional: Enable manual authentication (useful when localhost is not accessible)
-USE_MANUAL_AUTH=true
+# USE_MANUAL_AUTH=true
 # Optional: Token encryption key (auto-generated if not set)
 # TOKEN_ENCRYPTION_KEY=your_64_character_hex_string
 ```
@@ -184,7 +189,7 @@ Add the server to your `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@takumi0706/google-calendar-mcp"
+        "@naotaka3/google-calendar-mcp"
       ],
       "env": {
         "GOOGLE_CLIENT_ID": "your_client_id",
@@ -199,6 +204,7 @@ Add the server to your `claude_desktop_config.json`:
 **Authentication persistence**: The server automatically generates an encryption key on first run and saves it to `~/.google-calendar-mcp/encryption-key.txt`. This allows your authentication to persist across Claude Desktop restarts without any additional configuration.
 
 **Optional settings**:
+
 - If you're running in an environment where localhost is not accessible (e.g., remote server or container), add `"USE_MANUAL_AUTH": "true"` to enable manual code entry
 - You can customize the authentication server port with `"AUTH_PORT": "4153"` (default is 4153)
 - For shared environments, you can optionally set `"TOKEN_ENCRYPTION_KEY"` to control the encryption key used
@@ -243,73 +249,14 @@ If you encounter any issues:
 - **Disconnection Issues**: Ensure your server is properly handling MCP messages without custom TCP sockets
 - **Cannot access localhost**: If you're running the application in an environment where localhost is not accessible (like a remote server or container), enable manual authentication by setting `USE_MANUAL_AUTH=true`. This will allow you to manually enter the authorization code shown by Google after authorizing the application.
 
-## Version History
-
-### Version 1.0.6 Changes
-- Fixed the scope is not needed in this google calendar mcp server
-
-### Version 1.0.5 Changes
-- Added support for recurring events through the `recurrence` parameter in both `createEvent` and `updateEvent` tools
-- Allows creation and modification of recurring events directly without manual setup
-
-### Version 1.0.4 Changes
-- Maintenance release with version number update
-- No functional changes from version 1.0.3
-- Ensures compatibility with the latest dependencies
-
-### Version 1.0.3 Changes
-- Added new `authenticate` tool to allow re-authentication without restarting Claude
-- Made it possible to switch between different Google accounts during a session
-- Exposed authentication functionality through the MCP interface
-- Enhanced user experience by eliminating the need to restart for account switching
-- Added manual authentication option for environments where localhost is not accessible
-- Implemented readline interface for entering authorization codes manually
-- Added USE_MANUAL_AUTH environment variable to enable manual authentication
-- Updated zod dependency to the latest version (3.24.2)
-- Improved schema validation with the latest zod features
-- Enhanced code stability and security
-- Fixed "Invalid state parameter" error during re-authentication
-- Modified OAuth server to start on-demand and shut down after authentication
-- Improved server lifecycle management to prevent port conflicts
-- Enhanced error handling for authentication flow
-
-### Version 1.0.2 Changes
-- Fixed `updateEvent` function to preserve existing event data when performing partial updates
-- Added `getEvent` function to fetch existing event data before updating
-- Modified `updateEvent` to merge update data with existing data to prevent data loss
-- Updated schema validation to make all fields optional in update requests
-- Improved documentation for the `updateEvent` function
-
-### Version 1.0.1 Changes
-- Fixed compatibility issue with Node.js v20.9.0+ and the 'open' package (v10+)
-- Replaced static import with dynamic import for the ESM-only 'open' package
-- Improved error handling for browser opening during OAuth authentication
-- Enhanced code comments for better maintainability
-
-### Version 1.0.0 Changes
-- Major version release marking production readiness
-- Comprehensive code refactoring for improved maintainability
-- Internationalization of all messages and comments (translated Japanese to English)
-- Enhanced code consistency and readability
-- Improved error messages for better user experience
-- Updated documentation to reflect current state of the project
-- Standardized coding style throughout the codebase
-
-### Version 0.8.0 Changes
-- Enhanced OAuth authentication flow to handle refresh token issues
-- Added `prompt: 'consent'` parameter to force Google to show the consent screen and provide a new refresh token
-- Modified authentication flow to work with just an access token if a refresh token is not available
-- Improved token refresh logic to handle cases where there's no refresh token or if the refresh token is invalid
-- Updated token storage to save refreshed access tokens for better token management
-- Fixed potential infinite loop in token refresh logic
-
 ## Development
 
 To contribute to this project:
 
 ```bash
+
 # Clone the repository
-git clone https://github.com/takumi0706/google-calendar-mcp.git
+git clone https://github.com/naotaka3/google-calendar-mcp.git
 cd google-calendar-mcp
 
 # Install dependencies
