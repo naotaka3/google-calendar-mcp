@@ -148,10 +148,10 @@ The version script will automatically run `npm install` when the version is upda
 
 ## Deployment
 
-This package is published on npm as `@naotaka3/google-calendar-mcp`:
+This package is published on npm as `@naotaka/google-calendar-mcp`:
 
 ```bash
-npx @naotaka3/google-calendar-mcp@latest
+npx @naotaka/google-calendar-mcp@latest
 ```
 
 ### Prerequisites
@@ -189,7 +189,7 @@ Add the server to your `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@naotaka3/google-calendar-mcp"
+        "@naotaka/google-calendar-mcp"
       ],
       "env": {
         "GOOGLE_CLIENT_ID": "your_client_id",
