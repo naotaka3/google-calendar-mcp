@@ -23,10 +23,7 @@
     "format": "prettier --write 'src/**/*.ts'",
     "prepare": "npm run build || true",
     "prepublishOnly": "npm test && npm run lint",
-    "version": "npm run format && git add -A src && npm run install:legacy",
-    "postversion": "git push && git push --tags",
-    "security": "npm audit",
-    "install:legacy": "npm install --legacy-peer-deps"
+    "security": "npm audit"
   },
   "repository": {
     "type": "git",
