@@ -10,6 +10,7 @@ Google Calendar MCP Server is an MCP (Model Context Protocol) implementation tha
 
 - All code comments, JSDoc, and documentation must be written in English
 - Variable names, function names, and other identifiers should use English
+- Git commit messages and pull request descriptions must be written in English
 
 ## Development Commands
 
