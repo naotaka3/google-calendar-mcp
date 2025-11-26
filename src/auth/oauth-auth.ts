@@ -47,8 +47,7 @@ class OAuthAuth {
    */
   private loadSavedTokens(): void {
     const userId = 'default-user';
-    const refreshToken = tokenManager.getToken(userId);
-    const accessToken = tokenManager.getToken(`${userId}_access`);
+    const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
     // リフレッシュトークンがあれば、アクセストークンの有無に関わらず設定
     if (refreshToken || accessToken) {
@@ -124,7 +123,7 @@ class OAuthAuth {
       if (credentials.access_token) {
         const userId = 'default-user';
         const expiresIn = credentials.expiry_date ? credentials.expiry_date - Date.now() : 3600 * 1000;
-        tokenManager.storeToken(`${userId}_access`, credentials.access_token, expiresIn);
+        tokenManager.storeTokens(userId, credentials.access_token, expiresIn);
         logger.info('Successfully refreshed and stored access token');
       }
     } catch (error) {
@@ -233,8 +232,7 @@ class OAuthAuth {
       logger.info('Manual authentication successful');
 
       // Get tokens from token manager
-      const refreshToken = tokenManager.getToken(userId);
-      const accessToken = tokenManager.getToken(`${userId}_access`);
+      const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
       if (!accessToken) {
         throw new Error('Failed to obtain access token');
@@ -318,8 +316,7 @@ class OAuthAuth {
         // Monitor tokens from token manager
         const checkToken = async () => {
           try {
-            const refreshToken = tokenManager.getToken(userId);
-            const accessToken = tokenManager.getToken(`${userId}_access`);
+            const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
             // Consider authentication successful if access token exists
             // Set refresh token only if it exists
