@@ -1,4 +1,4 @@
-// jest型定義は自動的に利用されるため、明示的なインポートは不要
+// Jest type definitions are automatically available, no explicit import needed
 import {
   getEventsParamsSchema,
   createEventParamsSchema,
@@ -6,7 +6,7 @@ import {
   deleteEventParamsSchema
 } from '../mcp/schemas';
 
-// テスト環境を設定
+// Set up test environment
 beforeAll(() => {
   process.env.NODE_ENV = 'test';
 });

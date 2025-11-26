@@ -1,14 +1,14 @@
-// jest型定義は自動的に利用されるため、明示的なインポートは不要
+// Jest type definitions are automatically available, no explicit import needed
 import config from '../config/config';
 
-// 環境変数を一時的にモック
+// Temporarily mock environment variables
 beforeEach(() => {
   process.env.GOOGLE_CLIENT_ID = 'test-client-id';
   process.env.GOOGLE_CLIENT_SECRET = 'test-client-secret';
   process.env.GOOGLE_REDIRECT_URI = 'http://localhost:3000/oauth2callback';
 });
 
-// テスト後にモックを元に戻す
+// Restore mocks after each test
 afterEach(() => {
   delete process.env.GOOGLE_CLIENT_ID;
   delete process.env.GOOGLE_CLIENT_SECRET;

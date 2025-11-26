@@ -6,15 +6,15 @@ import path from 'path';
 import os from 'os';
 
 /**
- * トークンデータの型定義
+ * Token data type definition
  */
 interface TokenData {
-  value: string; // 暗号化されたトークン値
-  expiresAt: number; // 有効期限（タイムスタンプ）
+  value: string; // Encrypted token value
+  expiresAt: number; // Expiration timestamp
 }
 
 /**
- * ユーザーのトークン情報
+ * User token information
  */
 interface UserTokens {
   accessToken?: TokenData;
@@ -22,17 +22,17 @@ interface UserTokens {
 }
 
 /**
- * ファイル保存形式
+ * File storage format
  */
 interface TokensFileData {
   [userId: string]: UserTokens;
 }
 
 /**
- * TokenManager - セキュアなトークン管理クラス
+ * TokenManager - Secure token management class
  *
- * トークンを暗号化してメモリ内とファイルに保存し、必要に応じて復号化して取得する
- * AES-256-GCM暗号化を使用して高いセキュリティを提供
+ * Encrypts and stores tokens in memory and file, decrypts and retrieves them as needed
+ * Uses AES-256-GCM encryption for high security
  */
 class TokenManager {
   private algorithm = 'aes-256-gcm';
@@ -44,12 +44,12 @@ class TokenManager {
   private configDir: string;
 
   constructor() {
-    // 設定ディレクトリのパスを設定
+    // Set config directory path
     this.configDir = path.join(os.homedir(), '.google-calendar-mcp');
     this.tokensFilePath = path.join(this.configDir, 'tokens.json');
     this.encryptionKeyFilePath = path.join(this.configDir, 'encryption-key.txt');
 
-    // 設定ディレクトリが存在しない場合は作成
+    // Create config directory if it doesn't exist
     if (!fs.existsSync(this.configDir)) {
       fs.mkdirSync(this.configDir, { recursive: true });
       if (typeof logger.info === 'function') {
@@ -57,27 +57,27 @@ class TokenManager {
       }
     }
 
-    // 暗号化キーを読み込みまたは生成
+    // Load or generate encryption key
     this.encryptionKey = this.loadOrGenerateEncryptionKey();
 
     if (typeof logger.info === 'function') {
       logger.info('TokenManager initialized with secure encryption');
     }
 
-    // 起動時にファイルからトークンを読み込む
+    // Load tokens from file on startup
     this.loadTokensFromFile();
 
-    // 定期的に期限切れトークンをクリーンアップ
-    this.cleanupInterval = setInterval(this.cleanupExpiredTokens.bind(this), 60 * 60 * 1000); // 1時間ごと
+    // Periodically cleanup expired tokens (every hour)
+    this.cleanupInterval = setInterval(this.cleanupExpiredTokens.bind(this), 60 * 60 * 1000);
   }
 
   /**
-   * 暗号化キーを読み込むか、存在しない場合は生成して保存
+   * Load encryption key from file, or generate and save if it doesn't exist
    *
-   * @returns 暗号化キー
+   * @returns Encryption key
    */
   private loadOrGenerateEncryptionKey(): Buffer {
-    // 環境変数から暗号化キーを取得（優先度最高）
+    // Get encryption key from environment variable (highest priority)
     if (process.env.TOKEN_ENCRYPTION_KEY) {
       if (typeof logger.info === 'function') {
         logger.info('Using encryption key from environment variable');
@@ -85,7 +85,7 @@ class TokenManager {
       return Buffer.from(process.env.TOKEN_ENCRYPTION_KEY, 'hex');
     }
 
-    // ファイルから暗号化キーを読み込む
+    // Load encryption key from file
     if (fs.existsSync(this.encryptionKeyFilePath)) {
       try {
         const keyString = fs.readFileSync(this.encryptionKeyFilePath, 'utf8').trim();
@@ -107,7 +107,7 @@ class TokenManager {
       }
     }
 
-    // 新しい暗号化キーを生成して保存
+    // Generate and save a new encryption key
     const newKey = crypto.randomBytes(32).toString('hex');
     try {
       fs.writeFileSync(this.encryptionKeyFilePath, newKey, { mode: 0o600 });
@@ -125,7 +125,7 @@ class TokenManager {
   }
 
   /**
-   * トークンを暗号化
+   * Encrypt a token
    */
   private encrypt(token: string): string {
     const iv = crypto.randomBytes(16);
@@ -136,12 +136,12 @@ class TokenManager {
 
     const authTag = (cipher as any).getAuthTag();
 
-    // 初期化ベクトル、認証タグ、暗号文を連結
+    // Concatenate initialization vector, auth tag, and ciphertext
     return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   }
 
   /**
-   * トークンを復号化
+   * Decrypt a token
    */
   private decrypt(encryptedData: string): string | null {
     try {
@@ -167,13 +167,13 @@ class TokenManager {
   }
 
   /**
-   * ユーザーのトークンを保存
+   * Store user tokens
    *
-   * @param userId ユーザーID
-   * @param accessToken アクセストークン（オプション）
-   * @param accessTokenExpiresIn アクセストークンの有効期限（ミリ秒）
-   * @param refreshToken リフレッシュトークン（オプション）
-   * @param refreshTokenExpiresIn リフレッシュトークンの有効期限（ミリ秒）、デフォルト30日
+   * @param userId User ID
+   * @param accessToken Access token (optional)
+   * @param accessTokenExpiresIn Access token expiration time in milliseconds
+   * @param refreshToken Refresh token (optional)
+   * @param refreshTokenExpiresIn Refresh token expiration time in milliseconds, default 30 days
    */
   public storeTokens(
     userId: string,
@@ -210,7 +210,7 @@ class TokenManager {
 
       this.userTokens.set(userId, updatedTokens);
 
-      // ファイルに保存
+      // Save to file
       this.saveTokensToFile();
     } catch (err: unknown) {
       const error = err as Error;
@@ -222,10 +222,10 @@ class TokenManager {
   }
 
   /**
-   * ユーザーのトークンを取得
+   * Get user tokens
    *
-   * @param userId ユーザーID
-   * @returns アクセストークンとリフレッシュトークン
+   * @param userId User ID
+   * @returns Access token and refresh token
    */
   public getTokens(userId: string): { accessToken: string | null; refreshToken: string | null } {
     const userTokens = this.userTokens.get(userId);
@@ -241,7 +241,7 @@ class TokenManager {
     let accessToken: string | null = null;
     let refreshToken: string | null = null;
 
-    // アクセストークンの取得と有効期限チェック
+    // Get access token and check expiration
     if (userTokens.accessToken) {
       if (userTokens.accessToken.expiresAt > now) {
         accessToken = this.decrypt(userTokens.accessToken.value);
@@ -249,12 +249,12 @@ class TokenManager {
         if (typeof logger.debug === 'function') {
           logger.debug(`Access token expired for user: ${userId}`);
         }
-        // 期限切れのアクセストークンを削除
+        // Remove expired access token
         userTokens.accessToken = undefined;
       }
     }
 
-    // リフレッシュトークンの取得と有効期限チェック
+    // Get refresh token and check expiration
     if (userTokens.refreshToken) {
       if (userTokens.refreshToken.expiresAt > now) {
         refreshToken = this.decrypt(userTokens.refreshToken.value);
@@ -262,12 +262,12 @@ class TokenManager {
         if (typeof logger.debug === 'function') {
           logger.debug(`Refresh token expired for user: ${userId}`);
         }
-        // 期限切れのリフレッシュトークンを削除
+        // Remove expired refresh token
         userTokens.refreshToken = undefined;
       }
     }
 
-    // 両方のトークンが削除された場合、ユーザーエントリを削除
+    // Delete user entry if both tokens are removed
     if (!userTokens.accessToken && !userTokens.refreshToken) {
       this.userTokens.delete(userId);
       this.saveTokensToFile();
@@ -277,21 +277,21 @@ class TokenManager {
   }
 
   /**
-   * ユーザーのトークンを削除
+   * Remove user tokens
    *
-   * @param userId ユーザーID
+   * @param userId User ID
    */
   public removeTokens(userId: string): void {
     this.userTokens.delete(userId);
     if (typeof logger.debug === 'function') {
       logger.debug(`Tokens removed for user: ${userId}`);
     }
-    // ファイルに保存
+    // Save to file
     this.saveTokensToFile();
   }
 
   /**
-   * 期限切れのトークンをクリーンアップ
+   * Cleanup expired tokens
    */
   private cleanupExpiredTokens(): void {
     const now = Date.now();
@@ -328,7 +328,7 @@ class TokenManager {
   }
 
   /**
-   * トークンをファイルに保存
+   * Save tokens to file
    */
   private saveTokensToFile(): void {
     try {
@@ -351,7 +351,7 @@ class TokenManager {
   }
 
   /**
-   * ファイルからトークンを読み込む
+   * Load tokens from file
    */
   private loadTokensFromFile(): void {
     try {
@@ -365,7 +365,7 @@ class TokenManager {
       const fileContent = fs.readFileSync(this.tokensFilePath, 'utf8');
       const data = JSON.parse(fileContent);
 
-      // 新形式のデータを読み込む
+      // Load data in new format
       if (data && typeof data === 'object' && !Array.isArray(data.tokens)) {
         for (const [userId, tokens] of Object.entries(data)) {
           if (tokens && typeof tokens === 'object') {
@@ -373,11 +373,11 @@ class TokenManager {
           }
         }
       } else if (data.tokens && Array.isArray(data.tokens)) {
-        // 旧形式からのマイグレーション
+        // Migration from old format
         this.migrateFromOldFormat(data);
       }
 
-      // 期限切れのトークンをクリーンアップ
+      // Cleanup expired tokens
       this.cleanupExpiredTokens();
 
       if (typeof logger.info === 'function') {
@@ -392,7 +392,7 @@ class TokenManager {
   }
 
   /**
-   * 旧形式からのマイグレーション
+   * Migration from old format
    */
   private migrateFromOldFormat(data: { tokens: [string, string][]; expirations: [string, number][] }): void {
     if (typeof logger.info === 'function') {
@@ -402,14 +402,14 @@ class TokenManager {
     const oldTokens = new Map<string, string>(data.tokens);
     const oldExpirations = new Map<string, number>(data.expirations);
 
-    // ユーザーIDを収集（_access サフィックスを除去）
+    // Collect user IDs (remove _access suffix)
     const userIds = new Set<string>();
     for (const key of oldTokens.keys()) {
       const userId = key.replace(/_access$/, '');
       userIds.add(userId);
     }
 
-    // 各ユーザーのトークンを新形式に変換
+    // Convert each user's tokens to new format
     for (const userId of userIds) {
       const refreshTokenValue = oldTokens.get(userId);
       const accessTokenValue = oldTokens.get(`${userId}_access`);
@@ -437,7 +437,7 @@ class TokenManager {
       }
     }
 
-    // 新形式で保存
+    // Save in new format
     this.saveTokensToFile();
 
     if (typeof logger.info === 'function') {
@@ -446,8 +446,8 @@ class TokenManager {
   }
 
   /**
-   * クリーンアップタイマーを停止し、リソースを解放する
-   * テスト環境やアプリケーション終了時に呼び出すべき
+   * Stop cleanup timer and release resources
+   * Should be called in test environments or at application shutdown
    */
   public stopCleanupTimer(): void {
     if (this.cleanupInterval) {
@@ -460,5 +460,5 @@ class TokenManager {
   }
 }
 
-// シングルトンインスタンスをエクスポート
+// Export singleton instance
 export const tokenManager = new TokenManager();

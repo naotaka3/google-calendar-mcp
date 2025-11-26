@@ -6,6 +6,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Google Calendar MCP Server is an MCP (Model Context Protocol) implementation that enables Claude Desktop to interact with Google Calendar through natural language. The server uses OAuth2 authentication and provides tools for managing calendar events (get, create, update, delete).
 
+## Code Style
+
+- All code comments, JSDoc, and documentation must be written in English
+- Variable names, function names, and other identifiers should use English
+
 ## Development Commands
 
 ### Building and Running
