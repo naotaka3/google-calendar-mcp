@@ -1,5 +1,12 @@
 // src/__tests__/auth/token-manager.test.ts
-import { tokenManager } from '../../auth/token-manager';
+
+// fsモジュールをモック（token-managerのインポート前にモックする必要がある）
+jest.mock('fs', () => ({
+  existsSync: jest.fn().mockReturnValue(false),
+  mkdirSync: jest.fn(),
+  writeFileSync: jest.fn(),
+  readFileSync: jest.fn().mockReturnValue(''),
+}));
 
 // モックロガー
 jest.mock('../../utils/logger', () => ({
@@ -10,6 +17,8 @@ jest.mock('../../utils/logger', () => ({
     warn: jest.fn()
   }
 }));
+
+import { tokenManager } from '../../auth/token-manager';
 
 describe('TokenManager', () => {
   beforeEach(() => {
