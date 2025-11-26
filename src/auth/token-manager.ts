@@ -6,6 +6,29 @@ import path from 'path';
 import os from 'os';
 
 /**
+ * トークンデータの型定義
+ */
+interface TokenData {
+  value: string; // 暗号化されたトークン値
+  expiresAt: number; // 有効期限（タイムスタンプ）
+}
+
+/**
+ * ユーザーのトークン情報
+ */
+interface UserTokens {
+  accessToken?: TokenData;
+  refreshToken?: TokenData;
+}
+
+/**
+ * ファイル保存形式
+ */
+interface TokensFileData {
+  [userId: string]: UserTokens;
+}
+
+/**
  * TokenManager - セキュアなトークン管理クラス
  *
  * トークンを暗号化してメモリ内とファイルに保存し、必要に応じて復号化して取得する
@@ -14,8 +37,7 @@ import os from 'os';
 class TokenManager {
   private algorithm = 'aes-256-gcm';
   private encryptionKey: Buffer;
-  private tokens: Map<string, string> = new Map();
-  private tokenExpirations: Map<string, number> = new Map();
+  private userTokens: Map<string, UserTokens> = new Map();
   private cleanupInterval: NodeJS.Timeout | null = null;
   private tokensFilePath: string;
   private encryptionKeyFilePath: string;
@@ -103,80 +125,32 @@ class TokenManager {
   }
 
   /**
-   * トークンを暗号化して保存
-   *
-   * @param userId ユーザーID
-   * @param token 保存するトークン
-   * @param expiresIn トークンの有効期限（ミリ秒）、デフォルト30日
+   * トークンを暗号化
    */
-  public storeToken(userId: string, token: string, expiresIn: number = 30 * 24 * 60 * 60 * 1000): void {
-    try {
-      const iv = crypto.randomBytes(16);
-      const cipher = crypto.createCipheriv(this.algorithm, this.encryptionKey, iv);
+  private encrypt(token: string): string {
+    const iv = crypto.randomBytes(16);
+    const cipher = crypto.createCipheriv(this.algorithm, this.encryptionKey, iv);
 
-      let encrypted = cipher.update(token, 'utf8', 'hex');
-      encrypted += cipher.final('hex');
+    let encrypted = cipher.update(token, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
 
-      // crypto.Cipher.prototype.getAuthTag は @types/node に定義されていないが、実際のNodeJSには存在する
-      const authTag = (cipher as any).getAuthTag();
+    const authTag = (cipher as any).getAuthTag();
 
-      // 初期化ベクトル、認証タグ、暗号文を連結して保存
-      const tokenData = `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
-      this.tokens.set(userId, tokenData);
-
-      // 有効期限を設定
-      const expiryTime = Date.now() + expiresIn;
-      this.tokenExpirations.set(userId, expiryTime);
-
-      if (typeof logger.debug === 'function') {
-        logger.debug(`Token stored for user: ${userId}, expires: ${new Date(expiryTime).toISOString()}`);
-      }
-
-      // ファイルに保存
-      this.saveTokensToFile();
-    } catch (err: unknown) {
-      const error = err as Error;
-      if (typeof logger.error === 'function') {
-        logger.error('Failed to encrypt and store token', { userId, error: error.message });
-      }
-      throw new Error('Token encryption failed');
-    }
+    // 初期化ベクトル、認証タグ、暗号文を連結
+    return `${iv.toString('hex')}:${authTag.toString('hex')}:${encrypted}`;
   }
 
   /**
-   * 保存されたトークンを復号化して取得
-   * 
-   * @param userId ユーザーID
-   * @returns 復号化されたトークン、または存在しない場合はnull
+   * トークンを復号化
    */
-  public getToken(userId: string): string | null {
-    const tokenData = this.tokens.get(userId);
-    if (!tokenData) {
-      if (typeof logger.debug === 'function') {
-        logger.debug(`No token found for user: ${userId}`);
-      }
-      return null;
-    }
-
-    // トークンの有効期限をチェック
-    const expiry = this.tokenExpirations.get(userId);
-    if (expiry && expiry < Date.now()) {
-      if (typeof logger.debug === 'function') {
-        logger.debug(`Token expired for user: ${userId}`);
-      }
-      this.removeToken(userId);
-      return null;
-    }
-
+  private decrypt(encryptedData: string): string | null {
     try {
-      const [ivHex, authTagHex, encrypted] = tokenData.split(':');
+      const [ivHex, authTagHex, encrypted] = encryptedData.split(':');
 
       const iv = Buffer.from(ivHex, 'hex');
       const authTag = Buffer.from(authTagHex, 'hex');
 
       const decipher = crypto.createDecipheriv(this.algorithm, this.encryptionKey, iv);
-
-      // crypto.Decipher.prototype.setAuthTag は @types/node に定義されていないが、実際のNodeJSには存在する
       (decipher as any).setAuthTag(authTag);
 
       let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -186,22 +160,131 @@ class TokenManager {
     } catch (err: unknown) {
       const error = err as Error;
       if (typeof logger.error === 'function') {
-        logger.error('Failed to decrypt token', { userId, error: error.message });
+        logger.error('Failed to decrypt token', { error: error.message });
       }
       return null;
     }
   }
 
   /**
-   * トークンを削除
+   * ユーザーのトークンを保存
+   *
+   * @param userId ユーザーID
+   * @param accessToken アクセストークン（オプション）
+   * @param accessTokenExpiresIn アクセストークンの有効期限（ミリ秒）
+   * @param refreshToken リフレッシュトークン（オプション）
+   * @param refreshTokenExpiresIn リフレッシュトークンの有効期限（ミリ秒）、デフォルト30日
+   */
+  public storeTokens(
+    userId: string,
+    accessToken?: string,
+    accessTokenExpiresIn?: number,
+    refreshToken?: string,
+    refreshTokenExpiresIn: number = 30 * 24 * 60 * 60 * 1000
+  ): void {
+    try {
+      const existingTokens = this.userTokens.get(userId) || {};
+      const updatedTokens: UserTokens = { ...existingTokens };
+
+      if (accessToken) {
+        const expiresAt = Date.now() + (accessTokenExpiresIn || 3600 * 1000);
+        updatedTokens.accessToken = {
+          value: this.encrypt(accessToken),
+          expiresAt,
+        };
+        if (typeof logger.debug === 'function') {
+          logger.debug(`Access token stored for user: ${userId}, expires: ${new Date(expiresAt).toISOString()}`);
+        }
+      }
+
+      if (refreshToken) {
+        const expiresAt = Date.now() + refreshTokenExpiresIn;
+        updatedTokens.refreshToken = {
+          value: this.encrypt(refreshToken),
+          expiresAt,
+        };
+        if (typeof logger.debug === 'function') {
+          logger.debug(`Refresh token stored for user: ${userId}, expires: ${new Date(expiresAt).toISOString()}`);
+        }
+      }
+
+      this.userTokens.set(userId, updatedTokens);
+
+      // ファイルに保存
+      this.saveTokensToFile();
+    } catch (err: unknown) {
+      const error = err as Error;
+      if (typeof logger.error === 'function') {
+        logger.error('Failed to encrypt and store tokens', { userId, error: error.message });
+      }
+      throw new Error('Token encryption failed');
+    }
+  }
+
+  /**
+   * ユーザーのトークンを取得
+   *
+   * @param userId ユーザーID
+   * @returns アクセストークンとリフレッシュトークン
+   */
+  public getTokens(userId: string): { accessToken: string | null; refreshToken: string | null } {
+    const userTokens = this.userTokens.get(userId);
+
+    if (!userTokens) {
+      if (typeof logger.debug === 'function') {
+        logger.debug(`No tokens found for user: ${userId}`);
+      }
+      return { accessToken: null, refreshToken: null };
+    }
+
+    const now = Date.now();
+    let accessToken: string | null = null;
+    let refreshToken: string | null = null;
+
+    // アクセストークンの取得と有効期限チェック
+    if (userTokens.accessToken) {
+      if (userTokens.accessToken.expiresAt > now) {
+        accessToken = this.decrypt(userTokens.accessToken.value);
+      } else {
+        if (typeof logger.debug === 'function') {
+          logger.debug(`Access token expired for user: ${userId}`);
+        }
+        // 期限切れのアクセストークンを削除
+        userTokens.accessToken = undefined;
+      }
+    }
+
+    // リフレッシュトークンの取得と有効期限チェック
+    if (userTokens.refreshToken) {
+      if (userTokens.refreshToken.expiresAt > now) {
+        refreshToken = this.decrypt(userTokens.refreshToken.value);
+      } else {
+        if (typeof logger.debug === 'function') {
+          logger.debug(`Refresh token expired for user: ${userId}`);
+        }
+        // 期限切れのリフレッシュトークンを削除
+        userTokens.refreshToken = undefined;
+      }
+    }
+
+    // 両方のトークンが削除された場合、ユーザーエントリを削除
+    if (!userTokens.accessToken && !userTokens.refreshToken) {
+      this.userTokens.delete(userId);
+      this.saveTokensToFile();
+    }
+
+    return { accessToken, refreshToken };
+  }
+
+  /**
+   * ユーザーのトークンを削除
    *
    * @param userId ユーザーID
    */
-  public removeToken(userId: string): void {
-    this.tokens.delete(userId);
-    this.tokenExpirations.delete(userId);
+  public removeTokens(userId: string): void {
+    this.userTokens.delete(userId);
     if (typeof logger.debug === 'function') {
-      logger.debug(`Token removed for user: ${userId}`);
+      logger.debug(`Tokens removed for user: ${userId}`);
     }
     // ファイルに保存
     this.saveTokensToFile();
@@ -212,18 +295,34 @@ class TokenManager {
    */
   private cleanupExpiredTokens(): void {
     const now = Date.now();
-    let expiredCount = 0;
+    let cleanedCount = 0;
 
-    for (const [userId, expiry] of this.tokenExpirations.entries()) {
-      if (expiry < now) {
-        this.removeToken(userId);
-        expiredCount++;
+    for (const [userId, tokens] of this.userTokens.entries()) {
+      let modified = false;
+
+      if (tokens.accessToken && tokens.accessToken.expiresAt <= now) {
+        tokens.accessToken = undefined;
+        modified = true;
+      }
+
+      if (tokens.refreshToken && tokens.refreshToken.expiresAt <= now) {
+        tokens.refreshToken = undefined;
+        modified = true;
+      }
+
+      if (!tokens.accessToken && !tokens.refreshToken) {
+        this.userTokens.delete(userId);
+        cleanedCount++;
+      } else if (modified) {
+        this.userTokens.set(userId, tokens);
+        cleanedCount++;
       }
     }
 
-    if (expiredCount > 0) {
+    if (cleanedCount > 0) {
+      this.saveTokensToFile();
       if (typeof logger.info === 'function') {
-        logger.info(`Cleaned up ${expiredCount} expired tokens`);
+        logger.info(`Cleaned up expired tokens for ${cleanedCount} users`);
       }
     }
   }
@@ -233,10 +332,12 @@ class TokenManager {
    */
   private saveTokensToFile(): void {
     try {
-      const data = {
-        tokens: Array.from(this.tokens.entries()),
-        expirations: Array.from(this.tokenExpirations.entries()),
-      };
+      const data: TokensFileData = {};
+
+      for (const [userId, tokens] of this.userTokens.entries()) {
+        data[userId] = tokens;
+      }
+
       fs.writeFileSync(this.tokensFilePath, JSON.stringify(data, null, 2), 'utf8');
       if (typeof logger.debug === 'function') {
         logger.debug(`Tokens saved to file: ${this.tokensFilePath}`);
@@ -264,25 +365,83 @@ class TokenManager {
       const fileContent = fs.readFileSync(this.tokensFilePath, 'utf8');
       const data = JSON.parse(fileContent);
 
-      if (data.tokens && Array.isArray(data.tokens)) {
-        this.tokens = new Map(data.tokens);
-      }
-
-      if (data.expirations && Array.isArray(data.expirations)) {
-        this.tokenExpirations = new Map(data.expirations);
+      // 新形式のデータを読み込む
+      if (data && typeof data === 'object' && !Array.isArray(data.tokens)) {
+        for (const [userId, tokens] of Object.entries(data)) {
+          if (tokens && typeof tokens === 'object') {
+            this.userTokens.set(userId, tokens as UserTokens);
+          }
+        }
+      } else if (data.tokens && Array.isArray(data.tokens)) {
+        // 旧形式からのマイグレーション
+        this.migrateFromOldFormat(data);
       }
 
       // 期限切れのトークンをクリーンアップ
       this.cleanupExpiredTokens();
 
       if (typeof logger.info === 'function') {
-        logger.info(`Loaded ${this.tokens.size} tokens from file`);
+        logger.info(`Loaded tokens for ${this.userTokens.size} users from file`);
       }
     } catch (err: unknown) {
       const error = err as Error;
       if (typeof logger.error === 'function') {
         logger.error('Failed to load tokens from file', { error: error.message });
       }
+    }
+  }
+
+  /**
+   * 旧形式からのマイグレーション
+   */
+  private migrateFromOldFormat(data: { tokens: [string, string][]; expirations: [string, number][] }): void {
+    if (typeof logger.info === 'function') {
+      logger.info('Migrating tokens from old format to new format');
+    }
+
+    const oldTokens = new Map<string, string>(data.tokens);
+    const oldExpirations = new Map<string, number>(data.expirations);
+
+    // ユーザーIDを収集（_access サフィックスを除去）
+    const userIds = new Set<string>();
+    for (const key of oldTokens.keys()) {
+      const userId = key.replace(/_access$/, '');
+      userIds.add(userId);
+    }
+
+    // 各ユーザーのトークンを新形式に変換
+    for (const userId of userIds) {
+      const refreshTokenValue = oldTokens.get(userId);
+      const accessTokenValue = oldTokens.get(`${userId}_access`);
+      const refreshTokenExpiry = oldExpirations.get(userId);
+      const accessTokenExpiry = oldExpirations.get(`${userId}_access`);
+
+      const userTokens: UserTokens = {};
+
+      if (accessTokenValue && accessTokenExpiry) {
+        userTokens.accessToken = {
+          value: accessTokenValue,
+          expiresAt: accessTokenExpiry,
+        };
+      }
+
+      if (refreshTokenValue && refreshTokenExpiry) {
+        userTokens.refreshToken = {
+          value: refreshTokenValue,
+          expiresAt: refreshTokenExpiry,
+        };
+      }
+
+      if (userTokens.accessToken || userTokens.refreshToken) {
+        this.userTokens.set(userId, userTokens);
+      }
+    }
+
+    // 新形式で保存
+    this.saveTokensToFile();
+
+    if (typeof logger.info === 'function') {
+      logger.info('Migration completed successfully');
     }
   }
 

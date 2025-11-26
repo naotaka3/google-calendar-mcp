@@ -47,22 +47,29 @@ class OAuthAuth {
    */
   private loadSavedTokens(): void {
     const userId = 'default-user';
-    const refreshToken = tokenManager.getToken(userId);
-    const accessToken = tokenManager.getToken(`${userId}_access`);
+    const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
-    if (accessToken) {
-      const credentials: any = {
-        access_token: accessToken
-      };
+    // リフレッシュトークンがあれば、アクセストークンの有無に関わらず設定
+    if (refreshToken || accessToken) {
+      const credentials: any = {};
+
+      if (accessToken) {
+        credentials.access_token = accessToken;
+      }
 
       if (refreshToken) {
         credentials.refresh_token = refreshToken;
-        logger.info('Loaded saved tokens from file');
-      } else {
-        logger.info('Loaded access token from file (no refresh token)');
       }
 
       this.oauth2Client.setCredentials(credentials);
+
+      if (accessToken && refreshToken) {
+        logger.info('Loaded saved tokens from file');
+      } else if (refreshToken) {
+        logger.info('Loaded refresh token from file (access token expired, will refresh on next request)');
+      } else {
+        logger.info('Loaded access token from file (no refresh token)');
+      }
     } else {
       logger.debug('No saved tokens found, authentication will be required');
     }
@@ -70,13 +77,20 @@ class OAuthAuth {
 
   // Get or refresh token
   async getAuthenticatedClient(): Promise<OAuth2Client> {
-    // If credentials are already set, return them
+    // If access token exists and is valid, return the client
     if (this.oauth2Client.credentials && this.oauth2Client.credentials.access_token) {
       // Check if token is expired
       if (this.isTokenExpired(this.oauth2Client.credentials)) {
         logger.info('Token expired, refreshing...');
         await this.refreshToken();
       }
+      return this.oauth2Client;
+    }
+
+    // If only refresh token exists (access token expired/missing), try to refresh
+    if (this.oauth2Client.credentials && this.oauth2Client.credentials.refresh_token) {
+      logger.info('No access token, but refresh token available. Refreshing...');
+      await this.refreshToken();
       return this.oauth2Client;
     }
 
@@ -109,7 +123,7 @@ class OAuthAuth {
       if (credentials.access_token) {
         const userId = 'default-user';
         const expiresIn = credentials.expiry_date ? credentials.expiry_date - Date.now() : 3600 * 1000;
-        tokenManager.storeToken(`${userId}_access`, credentials.access_token, expiresIn);
+        tokenManager.storeTokens(userId, credentials.access_token, expiresIn);
         logger.info('Successfully refreshed and stored access token');
       }
     } catch (error) {
@@ -218,8 +232,7 @@ class OAuthAuth {
       logger.info('Manual authentication successful');
 
       // Get tokens from token manager
-      const refreshToken = tokenManager.getToken(userId);
-      const accessToken = tokenManager.getToken(`${userId}_access`);
+      const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
       if (!accessToken) {
         throw new Error('Failed to obtain access token');
@@ -303,8 +316,7 @@ class OAuthAuth {
         // Monitor tokens from token manager
         const checkToken = async () => {
           try {
-            const refreshToken = tokenManager.getToken(userId);
-            const accessToken = tokenManager.getToken(`${userId}_access`);
+            const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
             // Consider authentication successful if access token exists
             // Set refresh token only if it exists

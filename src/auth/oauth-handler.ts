@@ -113,19 +113,23 @@ export class OAuthHandler {
       // Using 'default-user' as a simple implementation for now
       const userId = 'default-user';
 
-      // Encrypt and store token
+      // Store tokens
+      const accessTokenExpiresIn = tokens.expiry_date ? tokens.expiry_date - Date.now() : 3600 * 1000;
+      tokenManager.storeTokens(
+        userId,
+        tokens.access_token || undefined,
+        accessTokenExpiresIn,
+        tokens.refresh_token || undefined
+      );
+
       if (tokens.refresh_token) {
-        tokenManager.storeToken(userId, tokens.refresh_token);
         logger.info('Successfully obtained and stored refresh token', { userId });
       } else {
         logger.warn('No refresh token in the response', { userId });
       }
 
-      // Store access token for a short period as needed
       if (tokens.access_token) {
-        const expiresIn = tokens.expiry_date ? tokens.expiry_date - Date.now() : 3600 * 1000;
-        tokenManager.storeToken(`${userId}_access`, tokens.access_token, expiresIn);
-        logger.debug('Stored access token', { userId, expiresIn });
+        logger.debug('Stored access token', { userId, expiresIn: accessTokenExpiresIn });
       }
 
       return { success: true, message: 'Authentication successful' };
@@ -190,19 +194,23 @@ export class OAuthHandler {
       // Using 'default-user' as a simple implementation for now
       const userId = 'default-user';
 
-      // Encrypt and store token
+      // Store tokens
+      const accessTokenExpiresIn = tokens.expiry_date ? tokens.expiry_date - Date.now() : 3600 * 1000;
+      tokenManager.storeTokens(
+        userId,
+        tokens.access_token || undefined,
+        accessTokenExpiresIn,
+        tokens.refresh_token || undefined
+      );
+
       if (tokens.refresh_token) {
-        tokenManager.storeToken(userId, tokens.refresh_token);
         logger.info('Successfully obtained and stored refresh token', { userId });
       } else {
         logger.warn('No refresh token in the response', { userId });
       }
 
-      // Store access token for a short period as needed
       if (tokens.access_token) {
-        const expiresIn = tokens.expiry_date ? tokens.expiry_date - Date.now() : 3600 * 1000;
-        tokenManager.storeToken(`${userId}_access`, tokens.access_token, expiresIn);
-        logger.debug('Stored access token', { userId, expiresIn });
+        logger.debug('Stored access token', { userId, expiresIn: accessTokenExpiresIn });
       }
 
       // Redirect
