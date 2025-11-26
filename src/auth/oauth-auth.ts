@@ -302,8 +302,16 @@ class OAuthAuth {
         }
 
         // Authentication success page route
-        this.expressApp.get('/auth-success', (_req, res) => {
-          res.send(`<html lang="en"><body><h3>Authentication was successful. Please close this window and continue.</h3></body></html>`);
+        this.expressApp.get('/auth-success', (req, res) => {
+          const acceptLang = req.headers['accept-language'] || '';
+          const isJapanese = acceptLang.includes('ja');
+          if (isJapanese) {
+            res.send(`<html lang="ja"><body><h3>認証が成功しました。このウィンドウを閉じて、作業を続けてください。</h3>
+</body></html>`);
+          } else {
+            res.send(`<html lang="en"><body><h3>Authentication was successful. Please close this window and continue.</
+h3></body></html>`);
+          }
         });
 
         // Monitor tokens from token manager
