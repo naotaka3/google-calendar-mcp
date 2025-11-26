@@ -49,7 +49,7 @@ class OAuthAuth {
     const userId = 'default-user';
     const { accessToken, refreshToken } = tokenManager.getTokens(userId);
 
-    // リフレッシュトークンがあれば、アクセストークンの有無に関わらず設定
+    // Set credentials if refresh token exists, regardless of access token availability
     if (refreshToken || accessToken) {
       const credentials: any = {};
 
@@ -303,7 +303,6 @@ class OAuthAuth {
 
         // Authentication success page route
         this.expressApp.get('/auth-success', (req, res) => {
-          // Accept-Languageヘッダーを確認して日本語かどうか判定
           const acceptLang = req.headers['accept-language'] || '';
           const isJapanese = acceptLang.includes('ja');
           if (isJapanese) {

@@ -1,6 +1,6 @@
 // src/__tests__/auth/token-manager.test.ts
 
-// fsモジュールをモック（token-managerのインポート前にモックする必要がある）
+// Mock fs module (must be mocked before importing token-manager)
 jest.mock('fs', () => ({
   existsSync: jest.fn().mockReturnValue(false),
   mkdirSync: jest.fn(),
@@ -8,7 +8,7 @@ jest.mock('fs', () => ({
   readFileSync: jest.fn().mockReturnValue(''),
 }));
 
-// モックロガー
+// Mock logger
 jest.mock('../../utils/logger', () => ({
   default: {
     info: jest.fn(),
@@ -22,10 +22,10 @@ import { tokenManager } from '../../auth/token-manager';
 
 describe('TokenManager', () => {
   beforeEach(() => {
-    // テスト間での干渉を防ぐためにトークンをクリア
+    // Clear tokens to prevent interference between tests
     (tokenManager as any).userTokens = new Map();
 
-    // 時間関連のモック
+    // Mock time-related functions
     jest.useFakeTimers();
   });
 
@@ -33,7 +33,7 @@ describe('TokenManager', () => {
     jest.useRealTimers();
   });
 
-  // すべてのテスト完了後にクリーンアップタイマーを停止
+  // Stop cleanup timer after all tests complete
   afterAll(() => {
     tokenManager.stopCleanupTimer();
   });
@@ -61,18 +61,18 @@ describe('TokenManager', () => {
     const accessToken = 'expiring-access-token';
     const refreshToken = 'long-lived-refresh-token';
 
-    // アクセストークンは1秒、リフレッシュトークンは30日
+    // Access token expires in 1 second, refresh token in 30 days
     tokenManager.storeTokens(userId, accessToken, 1000, refreshToken, 30 * 24 * 60 * 60 * 1000);
 
-    // 期限切れ前
+    // Before expiration
     let tokens = tokenManager.getTokens(userId);
     expect(tokens.accessToken).toBe(accessToken);
     expect(tokens.refreshToken).toBe(refreshToken);
 
-    // 時間を進める（アクセストークンのみ期限切れ）
+    // Advance time (only access token expires)
     jest.advanceTimersByTime(1100);
 
-    // アクセストークンは期限切れ、リフレッシュトークンは有効
+    // Access token is expired, refresh token is still valid
     tokens = tokenManager.getTokens(userId);
     expect(tokens.accessToken).toBeNull();
     expect(tokens.refreshToken).toBe(refreshToken);
@@ -83,18 +83,18 @@ describe('TokenManager', () => {
     const accessToken = 'access-token';
     const refreshToken = 'refresh-token';
 
-    // 両方とも短い期限
+    // Both tokens have short expiration
     tokenManager.storeTokens(userId, accessToken, 1000, refreshToken, 2000);
 
-    // 期限切れ前
+    // Before expiration
     let tokens = tokenManager.getTokens(userId);
     expect(tokens.accessToken).toBe(accessToken);
     expect(tokens.refreshToken).toBe(refreshToken);
 
-    // 時間を進める（両方期限切れ）
+    // Advance time (both tokens expire)
     jest.advanceTimersByTime(2100);
 
-    // 両方期限切れ
+    // Both tokens are expired
     tokens = tokenManager.getTokens(userId);
     expect(tokens.accessToken).toBeNull();
     expect(tokens.refreshToken).toBeNull();
@@ -146,14 +146,14 @@ describe('TokenManager', () => {
     const refreshToken1 = 'refresh-token-1';
     const accessToken2 = 'access-token-2';
 
-    // 初回保存
+    // Initial save
     tokenManager.storeTokens(userId, accessToken1, 3600000, refreshToken1);
 
     let tokens = tokenManager.getTokens(userId);
     expect(tokens.accessToken).toBe(accessToken1);
     expect(tokens.refreshToken).toBe(refreshToken1);
 
-    // アクセストークンのみ更新（リフレッシュトークンは保持）
+    // Update only access token (refresh token is preserved)
     tokenManager.storeTokens(userId, accessToken2, 3600000);
 
     tokens = tokenManager.getTokens(userId);
@@ -165,22 +165,22 @@ describe('TokenManager', () => {
     const userId1 = 'user1';
     const userId2 = 'user2';
 
-    // user1: 両方短い期限
+    // user1: both tokens have short expiration
     tokenManager.storeTokens(userId1, 'access1', 1000, 'refresh1', 1000);
-    // user2: 長い期限
+    // user2: long expiration
     tokenManager.storeTokens(userId2, 'access2', 10000, 'refresh2', 10000);
 
-    // 両方のトークンが取得できることを確認
+    // Verify both tokens can be retrieved
     expect(tokenManager.getTokens(userId1).accessToken).toBe('access1');
     expect(tokenManager.getTokens(userId2).accessToken).toBe('access2');
 
-    // 2秒進める（userId1のトークンのみ期限切れ）
+    // Advance 2 seconds (only userId1's tokens expire)
     jest.advanceTimersByTime(2000);
 
-    // クリーンアップを手動で呼び出す
+    // Manually call cleanup
     (tokenManager as any).cleanupExpiredTokens();
 
-    // 期限切れのトークンはnull、期限内のトークンは取得できる
+    // Expired tokens return null, valid tokens can still be retrieved
     const tokens1 = tokenManager.getTokens(userId1);
     expect(tokens1.accessToken).toBeNull();
     expect(tokens1.refreshToken).toBeNull();
@@ -191,27 +191,27 @@ describe('TokenManager', () => {
   });
 
   test('should handle encryption/decryption', () => {
-    // 暗号化/復号化を確認するテスト
+    // Test to verify encryption/decryption
     const users = ['user-a', 'user-b', 'user-c'];
     const accessTokens = ['access-a', 'access-b', 'access-c'];
     const refreshTokens = ['refresh-a', 'refresh-b', 'refresh-c'];
 
-    // 複数のトークンを保存
+    // Store multiple tokens
     users.forEach((userId, index) => {
       tokenManager.storeTokens(userId, accessTokens[index], 3600000, refreshTokens[index]);
     });
 
-    // すべてのトークンが正しく取得できることを確認
+    // Verify all tokens can be retrieved correctly
     users.forEach((userId, index) => {
       const tokens = tokenManager.getTokens(userId);
       expect(tokens.accessToken).toBe(accessTokens[index]);
       expect(tokens.refreshToken).toBe(refreshTokens[index]);
     });
 
-    // ランダムにトークンを削除
+    // Remove a token randomly
     tokenManager.removeTokens(users[1]);
 
-    // 削除されたトークンはnull、他のトークンは利用可能
+    // Removed token returns null, other tokens are still available
     expect(tokenManager.getTokens(users[0]).accessToken).toBe(accessTokens[0]);
     expect(tokenManager.getTokens(users[1]).accessToken).toBeNull();
     expect(tokenManager.getTokens(users[2]).accessToken).toBe(accessTokens[2]);

@@ -1,4 +1,4 @@
-# ソースファイル
+# Source files
 src/
 __tests__/
 test/
@@ -6,7 +6,7 @@ tests/
 *.test.ts
 *.spec.ts
 
-# 設定ファイル
+# Configuration files
 .eslintrc.json
 .prettierrc
 .github/
@@ -16,7 +16,7 @@ jest.config.js
 .env
 .env.*
 
-# 開発時に使用するファイル
+# Development files
 node_modules/
 coverage/
 .vscode/
@@ -25,6 +25,6 @@ coverage/
 logs/
 token.json
 
-# ビルド前のファイル
+# Pre-build files
 *.ts
 !*.d.ts
