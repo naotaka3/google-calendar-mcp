@@ -1,14 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-We currently provide security updates for the following versions:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 1.0.x   | :white_check_mark: |
-| 0.0.x   | :x:                |
-
 ## Reporting a Vulnerability
 
 We take the security of Google Calendar MCP seriously. If you believe you've found a security vulnerability, please follow these steps:
