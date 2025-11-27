@@ -116,15 +116,15 @@ Re-authenticates with Google Calendar. This is useful when you want to switch be
 
 When adding new functions, modifying code, or fixing bugs, please semantically increase the version for each change using `npm version` command.
 Also, please make sure that your coding is clear and follows all the necessary coding rules, such as OOP.
-The version script will automatically run `npm install` when the version is updated, but you should still build, run lint, and test your code before submitting it.
+You should build, run lint, and test your code before submitting it.
 
 ### Code Structure
 
 - **src/**: Source code directory
   - **auth/**: Authentication handling
   - **config/**: Configuration settings
-  - **mcp/**: MCP server implementation
-  - **tools/**: Google Calendar tool implementations
+  - **mcp/**: MCP server implementation and tool definitions
+  - **calendar/**: Google Calendar API wrapper and types
   - **utils/**: Utility functions and helpers
 
 ### Best Practices
@@ -189,7 +189,7 @@ Add the server to your `claude_desktop_config.json`:
       "command": "npx",
       "args": [
         "-y",
-        "@naotaka/google-calendar-mcp"
+        "@naotaka/google-calendar-mcp@latest"
       ],
       "env": {
         "GOOGLE_CLIENT_ID": "your_client_id",
@@ -228,13 +228,13 @@ For more details, see [SECURITY.md](SECURITY.md).
 
 - Regular updates to maintain compatibility with the Google Calendar API
 - Version updates are documented in README.md
-- Logs are stored in the user's home directory `~/.google-calendar-mcp/logs/`
+- Logs are output to stderr (not to files) to avoid interfering with JSON-RPC communication on stdout
 
 ## Troubleshooting
 
 If you encounter any issues:
 
-1. Check the logs in your home directory at `~/.google-calendar-mcp/logs/`
+1. Check the stderr output for log messages (logs are not written to files)
 2. Make sure your Google OAuth credentials are correctly configured
 3. Ensure you have sufficient permissions for Google Calendar API access
 4. Verify your Claude Desktop configuration is correct
@@ -275,7 +275,7 @@ To run the tests:
 npm test
 
 # Run tests with coverage report
-npm test -- --coverage
+npm run test:coverage
 ```
 
 ## License
