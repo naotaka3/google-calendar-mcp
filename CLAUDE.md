@@ -35,7 +35,7 @@ npm start
 npm test
 
 # Run tests with coverage
-npm test:coverage
+npm run test:coverage
 
 # Run specific test file
 npm test -- path/to/test.test.ts
@@ -56,7 +56,6 @@ npm run security
 ### Version Management
 When making changes, use semantic versioning:
 ```bash
-# This runs format, adds changes, and runs npm install --legacy-peer-deps
 npm version patch|minor|major
 ```
 

@@ -7,9 +7,105 @@ import config from '../config/config';
 import logger from '../utils/logger';
 import { tokenManager } from './token-manager';
 import readline from 'readline';
+import { Server } from 'http';
+
+interface AuthPromiseCallbacks {
+  resolve: (client: OAuth2Client) => void;
+  reject: (error: Error) => void;
+}
+
+/**
+ * AuthSession - Manages a single authentication session
+ */
+class AuthSession {
+  private pendingCallbacks: AuthPromiseCallbacks[] = [];
+  private intervalId: NodeJS.Timeout | null = null;
+  private timeoutId: NodeJS.Timeout | null = null;
+  private _isCancelled: boolean = false;
+
+  get isCancelled(): boolean {
+    return this._isCancelled;
+  }
+
+  addCallback(callback: AuthPromiseCallbacks): void {
+    this.pendingCallbacks.push(callback);
+  }
+
+  setIntervalId(id: NodeJS.Timeout): void {
+    this.intervalId = id;
+  }
+
+  setTimeoutId(id: NodeJS.Timeout): void {
+    this.timeoutId = id;
+  }
+
+  /**
+   * Cancel this session (clear timers only, don't reject callbacks)
+   */
+  cancel(): void {
+    if (this._isCancelled) return;
+    this._isCancelled = true;
+
+    // Clear timers only
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+    // Don't reject callbacks - they will be handled by the new session
+  }
+
+  /**
+   * Resolve all pending callbacks with the client
+   */
+  resolveAll(client: OAuth2Client): void {
+    if (this._isCancelled) return;
+
+    // Clear timers
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+
+    for (const cb of this.pendingCallbacks) {
+      cb.resolve(client);
+    }
+    this.pendingCallbacks = [];
+  }
+
+  /**
+   * Reject all pending callbacks with an error
+   */
+  rejectAll(error: Error): void {
+    if (this._isCancelled) return;
+
+    // Clear timers
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
+    }
+
+    for (const cb of this.pendingCallbacks) {
+      cb.reject(error);
+    }
+    this.pendingCallbacks = [];
+  }
+}
+
 /**
  * OAuthAuth - Google authentication class using OAuthHandler
- * 
+ *
  * Processes Google OAuth authentication using OAuthHandler,
  * providing an interface similar to GoogleAuth.
  */
@@ -17,8 +113,8 @@ class OAuthAuth {
   private oauth2Client: OAuth2Client;
   private expressApp: express.Application;
   private oauthHandler: OAuthHandler;
-  private server: any;
-  private authorizationPromise: Promise<OAuth2Client> | null = null;
+  private server: Server | null = null;
+  private currentSession: AuthSession | null = null;
   private isServerRunning: boolean = false;
 
   constructor() {
@@ -40,6 +136,16 @@ class OAuthAuth {
 
     // Load saved tokens from TokenManager if available
     this.loadSavedTokens();
+  }
+
+  /**
+   * Clear all tokens and credentials (used for force re-authentication)
+   */
+  public clearTokens(): void {
+    const userId = 'default-user';
+    tokenManager.removeTokens(userId);
+    this.oauth2Client.credentials = {};
+    logger.info('Cleared all tokens and credentials');
   }
 
   /**
@@ -66,7 +172,9 @@ class OAuthAuth {
       if (accessToken && refreshToken) {
         logger.info('Loaded saved tokens from file');
       } else if (refreshToken) {
-        logger.info('Loaded refresh token from file (access token expired, will refresh on next request)');
+        logger.info(
+          'Loaded refresh token from file (access token expired, will refresh on next request)'
+        );
       } else {
         logger.info('Loaded access token from file (no refresh token)');
       }
@@ -112,7 +220,9 @@ class OAuthAuth {
         logger.warn('No refresh token available');
         // Clear existing credentials
         this.oauth2Client.credentials = {};
-        throw new Error('No refresh token available. Please use the authenticate tool to re-authenticate.');
+        throw new Error(
+          'No refresh token available. Please use the authenticate tool to re-authenticate.'
+        );
       }
 
       // If there's a refresh token, perform normal refresh
@@ -122,7 +232,9 @@ class OAuthAuth {
       // Also store the refreshed access token in the token manager
       if (credentials.access_token) {
         const userId = 'default-user';
-        const expiresIn = credentials.expiry_date ? credentials.expiry_date - Date.now() : 3600 * 1000;
+        const expiresIn = credentials.expiry_date
+          ? credentials.expiry_date - Date.now()
+          : 3600 * 1000;
         tokenManager.storeTokens(userId, credentials.access_token, expiresIn);
         logger.info('Successfully refreshed and stored access token');
       }
@@ -135,14 +247,21 @@ class OAuthAuth {
   }
 
   // Shut down the authentication server
-  private shutdownServer(): void {
-    if (this.server && this.isServerRunning) {
-      logger.info('Shutting down OAuth server');
-      this.server.close(() => {
-        logger.info('OAuth server has been shut down');
+  private shutdownServer(): Promise<void> {
+    return new Promise((resolve) => {
+      if (this.server && this.isServerRunning) {
+        logger.info('Shutting down OAuth server');
+        const serverToClose = this.server;
+        this.server = null;
         this.isServerRunning = false;
-      });
-    }
+        serverToClose.close(() => {
+          logger.info('OAuth server has been shut down');
+          resolve();
+        });
+      } else {
+        resolve();
+      }
+    });
   }
 
   // Start or restart the authentication server
@@ -157,7 +276,9 @@ class OAuthAuth {
         // Add error handling
         this.server.on('error', (err: any) => {
           if (err.code === 'EADDRINUSE') {
-            logger.warn(`Port ${config.auth.port} is already in use, assuming OAuth server is already running`);
+            logger.warn(
+              `Port ${config.auth.port} is already in use, assuming OAuth server is already running`
+            );
             // Set server object to null to indicate that we're using an existing server
             this.server = null;
             this.isServerRunning = false;
@@ -179,7 +300,7 @@ class OAuthAuth {
   private createReadlineInterface(): readline.Interface {
     return readline.createInterface({
       input: process.stdin,
-      output: process.stdout
+      output: process.stdout,
     });
   }
 
@@ -194,13 +315,15 @@ class OAuthAuth {
 
       // Try to open the browser automatically
       try {
-        import('open').then(openModule => {
-          openModule.default(authUrl);
-          logger.info('Opening browser for authorization...');
-        }).catch(error => {
-          logger.warn(`Failed to import 'open' package: ${error}`);
-          logger.info(`Please open this URL manually: ${authUrl}`);
-        });
+        import('open')
+          .then((openModule) => {
+            openModule.default(authUrl);
+            logger.info('Opening browser for authorization...');
+          })
+          .catch((error) => {
+            logger.warn(`Failed to import 'open' package: ${error}`);
+            logger.info(`Please open this URL manually: ${authUrl}`);
+          });
       } catch (error) {
         logger.warn(`Failed to open browser automatically: ${error}`);
         logger.info(`Please open this URL manually: ${authUrl}`);
@@ -211,9 +334,12 @@ class OAuthAuth {
 
       // Prompt for authorization code
       const authCode = await new Promise<string>((resolve) => {
-        rl.question('\nAfter authorizing, please enter the authorization code shown by Google: ', (code) => {
-          resolve(code.trim());
-        });
+        rl.question(
+          '\nAfter authorizing, please enter the authorization code shown by Google: ',
+          (code) => {
+            resolve(code.trim());
+          }
+        );
       });
 
       // Close readline interface
@@ -240,7 +366,7 @@ class OAuthAuth {
 
       // Set credentials
       const credentials: any = {
-        access_token: accessToken
+        access_token: accessToken,
       };
 
       if (refreshToken) {
@@ -260,120 +386,164 @@ class OAuthAuth {
 
   // Start authentication flow
   public initiateAuthorization(): Promise<OAuth2Client> {
-    if (this.authorizationPromise) {
-      return this.authorizationPromise;
-    }
-
     const userId = 'default-user';
 
-    // Check if manual authentication is enabled
-    if (config.auth.useManualAuth) {
-      logger.info('Using manual authentication flow');
-      this.authorizationPromise = this.handleManualAuth(userId);
-      return this.authorizationPromise;
-    }
+    // Create a new promise for this authorization request
+    return new Promise<OAuth2Client>((resolve, reject) => {
+      // If there's an existing session, cancel it and shutdown server
+      const previousSession = this.currentSession;
 
-    // Regular authentication flow with local server
-    // Ensure the server is running before starting the authentication flow
-    this.startServer();
+      // Create a new session
+      const session = new AuthSession();
+      this.currentSession = session;
 
-    this.authorizationPromise = new Promise((resolve, reject) => {
-      try {
-        // Generate authentication URL using OAuthHandler
-        const redirectUri = `http://${config.auth.host}:${config.auth.port}/auth-success`;
-        const authUrl = this.oauthHandler.generateAuthUrl(userId, redirectUri);
+      // Add this promise's callbacks to the new session
+      session.addCallback({ resolve, reject });
 
-        logger.info(`Please authorize this app by visiting this URL: ${authUrl}`);
-
-        // Open authentication URL in browser
-        try {
-          // Use dynamic import for the 'open' package (ESM module)
-          // This is necessary because 'open' v10+ is ESM-only and doesn't support CommonJS require()
-          import('open').then(openModule => {
-            openModule.default(authUrl);
-            logger.info('Opening browser for authorization...');
-          }).catch(error => {
-            logger.warn(`Failed to import 'open' package: ${error}`);
-            logger.info(`Please open this URL manually: ${authUrl}`);
-          });
-        } catch (error) {
-          logger.warn(`Failed to open browser automatically: ${error}`);
-          logger.info(`Please open this URL manually: ${authUrl}`);
+      // Cancel previous session and shutdown server, then start new auth flow
+      const startAuthFlow = async () => {
+        if (previousSession) {
+          logger.info('Cancelling previous authentication session');
+          previousSession.cancel();
+          await this.shutdownServer();
         }
 
-        // Authentication success page route
-        this.expressApp.get('/auth-success', (req, res) => {
-          const acceptLang = req.headers['accept-language'] || '';
-          const isJapanese = acceptLang.includes('ja');
-          if (isJapanese) {
-            res.send(`<html lang="ja"><body><h3>認証が成功しました。このウィンドウを閉じて、作業を続けてください。</h3></body></html>`);
-          } else {
-            res.send(`<html lang="en"><body><h3>Authentication was successful. Please close this window and continue.</h3></body></html>`);
-          }
-        });
-
-        // Monitor tokens from token manager
-        const checkToken = async () => {
-          try {
-            const { accessToken, refreshToken } = tokenManager.getTokens(userId);
-
-            // Consider authentication successful if access token exists
-            // Set refresh token only if it exists
-            if (accessToken) {
-              const credentials: any = {
-                access_token: accessToken
-              };
-
-              // Add refresh token if it exists
-              if (refreshToken) {
-                credentials.refresh_token = refreshToken;
-                logger.info('Using stored refresh token for authentication');
-              } else {
-                logger.warn('No refresh token available, proceeding with access token only');
+        // Check if manual authentication is enabled
+        if (config.auth.useManualAuth) {
+          logger.info('Using manual authentication flow');
+          this.handleManualAuth(userId)
+            .then((client) => {
+              if (!session.isCancelled) {
+                session.resolveAll(client);
+                this.currentSession = null;
               }
+            })
+            .catch((error) => {
+              if (!session.isCancelled) {
+                const authError = error instanceof Error ? error : new Error(String(error));
+                session.rejectAll(authError);
+                this.currentSession = null;
+              }
+            });
+          return;
+        }
 
-              // Set credentials to OAuth2 client when tokens are obtained
-              this.oauth2Client.setCredentials(credentials);
+        // Regular authentication flow with local server
+        // Ensure the server is running before starting the authentication flow
+        this.startServer();
 
-              clearInterval(intervalId);
-              this.authorizationPromise = null;
+        try {
+          // Generate authentication URL using OAuthHandler
+          const redirectUri = `http://${config.auth.host}:${config.auth.port}/auth-success`;
+          const authUrl = this.oauthHandler.generateAuthUrl(userId, redirectUri);
 
-              // Shut down the authentication server after successful authentication
+          logger.info(`Please authorize this app by visiting this URL: ${authUrl}`);
+
+          // Open authentication URL in browser
+          try {
+            // Use dynamic import for the 'open' package (ESM module)
+            // This is necessary because 'open' v10+ is ESM-only and doesn't support CommonJS require()
+            import('open')
+              .then((openModule) => {
+                openModule.default(authUrl);
+                logger.info('Opening browser for authorization...');
+              })
+              .catch((error) => {
+                logger.warn(`Failed to import 'open' package: ${error}`);
+                logger.info(`Please open this URL manually: ${authUrl}`);
+              });
+          } catch (error) {
+            logger.warn(`Failed to open browser automatically: ${error}`);
+            logger.info(`Please open this URL manually: ${authUrl}`);
+          }
+
+          // Authentication success page route
+          this.expressApp.get('/auth-success', (req, res) => {
+            const acceptLang = req.headers['accept-language'] || '';
+            const isJapanese = acceptLang.includes('ja');
+            if (isJapanese) {
+              res.send(
+                `<html lang="ja"><body><h3>認証が成功しました。このウィンドウを閉じて、作業を続けてください。</h3></body></html>`
+              );
+            } else {
+              res.send(
+                `<html lang="en"><body><h3>Authentication was successful. Please close this window and continue.</h3></body></html>`
+              );
+            }
+          });
+
+          // Monitor tokens from token manager
+          const checkToken = async () => {
+            // Skip if session was cancelled
+            if (session.isCancelled) return;
+
+            try {
+              const { accessToken, refreshToken } = tokenManager.getTokens(userId);
+
+              // Consider authentication successful if access token exists
+              // Set refresh token only if it exists
+              if (accessToken) {
+                const credentials: any = {
+                  access_token: accessToken,
+                };
+
+                // Add refresh token if it exists
+                if (refreshToken) {
+                  credentials.refresh_token = refreshToken;
+                  logger.info('Using stored refresh token for authentication');
+                } else {
+                  logger.warn('No refresh token available, proceeding with access token only');
+                }
+
+                // Set credentials to OAuth2 client when tokens are obtained
+                this.oauth2Client.setCredentials(credentials);
+
+                // Shut down the authentication server after successful authentication
+                this.shutdownServer();
+
+                // Resolve all pending promises
+                session.resolveAll(this.oauth2Client);
+                this.currentSession = null;
+              }
+            } catch (error) {
+              logger.error(`Error checking token: ${error}`);
+            }
+          };
+
+          // Check tokens periodically (every 200ms)
+          const intervalId = setInterval(checkToken, 200);
+          session.setIntervalId(intervalId);
+
+          // Set timeout (5 minutes)
+          const timeoutId = setTimeout(
+            () => {
+              if (session.isCancelled) return;
+
+              // Shut down the authentication server if authentication times out
               this.shutdownServer();
 
-              resolve(this.oauth2Client);
-            }
-          } catch (error) {
-            logger.error(`Error checking token: ${error}`);
-          }
-        };
+              const timeoutError = new Error('Authorization timed out after 5 minutes');
+              session.rejectAll(timeoutError);
+              this.currentSession = null;
+            },
+            5 * 60 * 1000
+          );
+          session.setTimeoutId(timeoutId);
+        } catch (error) {
+          logger.error(`Error in authorization: ${error}`);
 
-        // Check tokens periodically (every 200ms)
-        const intervalId = setInterval(checkToken, 200);
-
-        // Set timeout (5 minutes)
-        setTimeout(() => {
-          clearInterval(intervalId);
-          this.authorizationPromise = null;
-
-          // Shut down the authentication server if authentication times out
+          // Shut down the authentication server if there's an error during authentication
           this.shutdownServer();
 
-          reject(new Error('Authorization timed out after 5 minutes'));
-        }, 5 * 60 * 1000);
+          const authError = error instanceof Error ? error : new Error(String(error));
+          session.rejectAll(authError);
+          this.currentSession = null;
+        }
+      };
 
-      } catch (error) {
-        logger.error(`Error in authorization: ${error}`);
-        this.authorizationPromise = null;
-
-        // Shut down the authentication server if there's an error during authentication
-        this.shutdownServer();
-
-        reject(error);
-      }
+      // Start the auth flow
+      startAuthFlow();
     });
-
-    return this.authorizationPromise;
   }
 }
 

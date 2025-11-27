@@ -2,9 +2,11 @@
 import { z } from 'zod';
 
 /**
- * Authentication schema - Empty object as no parameters are needed
+ * Authentication schema
  */
-export const authenticateParamsSchema = z.object({});
+export const authenticateParamsSchema = z.object({
+  force: z.boolean().optional().default(false).describe('Set to true to force re-authentication (useful when switching Google accounts)')
+});
 
 /**
  * DateTime validation schema
