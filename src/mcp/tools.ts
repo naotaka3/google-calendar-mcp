@@ -11,7 +11,6 @@ import { z } from 'zod';
 import { CalendarEvent } from '../calendar/types';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import oauthAuth from '../auth/oauth-auth';
-import { tokenManager } from '../auth/token-manager';
 
 /**
  * Tools Manager Class
@@ -263,9 +262,9 @@ export class ToolsManager {
               logger.info('Not authenticated, starting authentication flow');
             }
           } else {
-            // Force re-authentication: clear existing tokens
+            // Force re-authentication: clear existing tokens and credentials
             logger.info('Force re-authentication requested, clearing existing tokens');
-            tokenManager.removeTokens('default');
+            oauthAuth.clearTokens();
           }
 
           // Call the initiateAuthorization method to start the authentication flow

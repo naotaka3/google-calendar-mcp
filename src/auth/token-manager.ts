@@ -231,9 +231,6 @@ class TokenManager {
     const userTokens = this.userTokens.get(userId);
 
     if (!userTokens) {
-      if (typeof logger.debug === 'function') {
-        logger.debug(`No tokens found for user: ${userId}`);
-      }
       return { accessToken: null, refreshToken: null };
     }
 

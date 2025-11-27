@@ -43,6 +43,16 @@ class OAuthAuth {
   }
 
   /**
+   * Clear all tokens and credentials (used for force re-authentication)
+   */
+  public clearTokens(): void {
+    const userId = 'default-user';
+    tokenManager.removeTokens(userId);
+    this.oauth2Client.credentials = {};
+    logger.info('Cleared all tokens and credentials');
+  }
+
+  /**
    * Load saved tokens from TokenManager
    */
   private loadSavedTokens(): void {
