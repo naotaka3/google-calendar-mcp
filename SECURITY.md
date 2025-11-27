@@ -50,6 +50,9 @@ The Google Calendar MCP handles OAuth tokens and calendar data, which may contai
    - Automatic token refresh with re-authentication fallback
    - `prompt: 'consent'` parameter to ensure refresh token availability
    - Seamless token refresh when access token expires but refresh token is available
+   - Multiple concurrent authentication session support (v0.0.3+)
+   - Automatic cancellation of previous sessions when new authentication is initiated
+   - Proper cleanup of authentication state between sessions
 
 3. **Security Headers and Middleware**:
    - Secure HTTP headers setup using Helmet.js
@@ -145,6 +148,11 @@ Implementation of OAuth 2.0 best practices:
   - Authentication timeout (5 minutes)
 - **Consent enforcement**: `prompt: 'consent'` parameter to ensure refresh token issuance
 - **On-demand server**: OAuth server starts only when needed and shuts down after authentication
+- **Session management** (v0.0.3+):
+  - AuthSession class manages individual authentication sessions
+  - Automatic cancellation of previous sessions when new authentication starts
+  - Proper cleanup of timers and callbacks when sessions are cancelled
+  - Prevention of authentication state conflicts between concurrent requests
 
 ### 3. HTML Sanitization and XSS Protection
 
