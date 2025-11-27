@@ -1,13 +1,5 @@
 # Security Policy
 
-## Supported Versions
-
-We currently provide security updates for the following versions:
-
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.0.1   | :white_check_mark: |
-
 ## Reporting a Vulnerability
 
 We take the security of Google Calendar MCP seriously. If you believe you've found a security vulnerability, please follow these steps:
@@ -37,7 +29,7 @@ You can also report directly at:
 
 The Google Calendar MCP handles OAuth tokens and calendar data, which may contain sensitive information. We've implemented the following security measures:
 
-### Security Features in Version 0.0.1
+### Security Features in Current Version
 
 1. **Token Encryption and Persistent Storage**:
    - AES-256-GCM encryption for protecting both access tokens and refresh tokens
@@ -47,6 +39,8 @@ The Google Calendar MCP handles OAuth tokens and calendar data, which may contai
    - Optional `TOKEN_ENCRYPTION_KEY` environment variable for shared environments
    - Automatic token cleanup (expired tokens removed hourly)
    - Token expiry validation before use
+   - Separate expiration tracking for access tokens and refresh tokens
+   - Automatic migration from legacy token format
 
 2. **Enhanced OAuth Authentication Flow**:
    - Implementation of PKCE (Proof Key for Code Exchange) for authorization code flow
@@ -55,6 +49,7 @@ The Google Calendar MCP handles OAuth tokens and calendar data, which may contai
    - On-demand OAuth server startup/shutdown (port 4153 by default)
    - Automatic token refresh with re-authentication fallback
    - `prompt: 'consent'` parameter to ensure refresh token availability
+   - Seamless token refresh when access token expires but refresh token is available
 
 3. **Security Headers and Middleware**:
    - Secure HTTP headers setup using Helmet.js
