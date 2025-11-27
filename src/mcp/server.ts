@@ -380,10 +380,12 @@ class GoogleCalendarMcpServer {
           },
           {
             name: 'authenticate',
-            description: 'Re-authenticate with Google Calendar (useful when switching between Google accounts)',
+            description: 'Re-authenticate with Google Calendar. Set force=true to switch to a different Google account.',
             inputSchema: {
               type: 'object',
-              properties: {},
+              properties: {
+                force: { type: 'boolean', description: 'Set to true to force re-authentication (useful when switching Google accounts)' },
+              },
             },
           },
         ],

@@ -110,7 +110,7 @@ Re-authenticates with Google Calendar. This is useful when you want to switch be
 
 **Parameters:**
 
-- None
+- `force` (optional): Set to true to force re-authentication (useful when switching Google accounts)
 
 ## Development Guidelines
 

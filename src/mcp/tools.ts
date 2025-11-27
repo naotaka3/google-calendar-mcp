@@ -11,6 +11,7 @@ import { z } from 'zod';
 import { CalendarEvent } from '../calendar/types';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import oauthAuth from '../auth/oauth-auth';
+import { tokenManager } from '../auth/token-manager';
 
 /**
  * Tools Manager Class
@@ -233,7 +234,9 @@ export class ToolsManager {
     );
 
     // authenticate tool
-    const authenticateSchema = {};
+    const authenticateSchema = {
+      force: z.boolean().optional().describe('Set to true to force re-authentication (useful when switching Google accounts)')
+    };
 
     this.tools['authenticate'] = authenticateSchema;
 
@@ -243,19 +246,26 @@ export class ToolsManager {
       async (args, _extra) => {
         try {
           logger.debug('Executing authenticate');
-          // Validate parameters (empty object)
-          authenticateParamsSchema.parse(args);
+          // Validate parameters
+          const params = authenticateParamsSchema.parse(args);
+          const forceReauth = params.force === true;
 
-          // Check if already authenticated
-          try {
-            await oauthAuth.getAuthenticatedClient();
-            logger.info('Already authenticated');
-            return {
-              content: [{ type: 'text' as const, text: 'Already authenticated. No action needed.' }]
-            };
-          } catch (authError) {
-            // Not authenticated, proceed with authentication flow
-            logger.info('Not authenticated, starting authentication flow');
+          // Check if already authenticated (skip if force is true)
+          if (!forceReauth) {
+            try {
+              await oauthAuth.getAuthenticatedClient();
+              logger.info('Already authenticated');
+              return {
+                content: [{ type: 'text' as const, text: 'Already authenticated. No action needed. Set force=true to switch accounts.' }]
+              };
+            } catch (authError) {
+              // Not authenticated, proceed with authentication flow
+              logger.info('Not authenticated, starting authentication flow');
+            }
+          } else {
+            // Force re-authentication: clear existing tokens
+            logger.info('Force re-authentication requested, clearing existing tokens');
+            tokenManager.removeTokens('default');
           }
 
           // Call the initiateAuthorization method to start the authentication flow
